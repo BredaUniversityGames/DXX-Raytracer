@@ -1,7 +1,7 @@
-![scrn0000](https://github.com/BredaUniversityGames/DXX-Raytracer/blob/main/images/banner.png)
+![image](https://github.com/BredaUniversityGames/DXX-Raytracer/assets/34250026/0b4acc54-ea4d-4fb0-8cfb-025927683ab1)
 
 # DXX Raytracer
-DXX Raytracer is a source port of the [DXX Retro](https://github.com/CDarrow/DXX-Retro) project for Windows. DXX Raytracer uses modern raytracing techniques to update the graphics of the beloved retro game known as Descent.
+DXX Raytracer is a fork of the [DXX Retro](https://github.com/CDarrow/DXX-Retro) project for Windows. DXX Raytracer uses modern raytracing techniques to update the graphics of the beloved retro game known as Descent.
 
 This build of the game uses the shareware assets. If you have bought the original version of Descent 1995, you can replace the descent.pig and descent.hog files
 with your versions to play the whole game.
