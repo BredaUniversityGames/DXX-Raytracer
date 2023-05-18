@@ -1,0 +1,83 @@
+﻿{
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "version": 3,
+  "configurePresets": [
+    {
+      "hidden": true,
+      "name": "default",
+      "description": "default-for-all",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}"
+      }
+    },
+    {
+      "name": "directx12-win-ship",
+      "description": "The shipping build for descent.",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GRAPHICS_API": "DirectX12"
+      }
+    },
+    {
+      "name": "directx12-win-debug",
+      "description": "Normal directx12 raytrace debug build.",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "GRAPHICS_API": "DirectX12"
+      }
+    },
+    {
+      "name": "directx12-win-release",
+      "description": "Directx12_build",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo ",
+        "GRAPHICS_API": "DirectX12"
+      }
+    },
+    {
+      "name": "directx12-win-debug-quick",
+      "description": "Directx12_build that skips skips the menu",
+      "inherits": "directx12-win-debug",
+      "cacheVariables": {
+        "QUICK_START": "true",
+        "GRAPHICS_API": "DirectX12"
+      }
+    },
+    {
+      "name": "directx12-win-release-quick",
+      "description": "Directx12_build that skips skips the menu",
+      "inherits": "directx12-win-release",
+      "cacheVariables": {
+        "QUICK_START": "true",
+        "GRAPHICS_API": "DirectX12"
+      }
+    },
+    {
+      "name": "openGL-x64-debug",
+      "description": "OpenGL Build for x64, no x86 build exists",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "GRAPHICS_API": "OpenGL"
+      }
+    },
+    {
+      "name": "openGL-x64-release",
+      "description": "OpenGL Build for x64, no x86 build exists",
+      "inherits": "default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "GRAPHICS_API": "OpenGL"
+      }
+    }
+  ]
+}

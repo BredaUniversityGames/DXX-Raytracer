@@ -1,0 +1,78 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.app
+*.o
+*.so
+*.pyc
+build
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+*.dblite
+*.bak
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# Xcode generated files #
+#########################
+# Note: committing these is optional
+*.mode1v3
+*.pbxuser
+*xcworkspace*
+*xcuserdata*
+
+# VS Code #
+###########
+.vs/
+.vscode/
+*.vcxproj
+*.vcxproj.filters
+# Executables #
+###############
+*.app
+*.pig
+*.hog
+d*x-rebirth
+out/*
+
+# CMAKE #
+###############
+CMakeFiles/*
+
+# temp files, project files
+*.temp
+*.10x   # 10x editor
+tags    # ctags files used with vim
+
+# Somewhat niche, if one of the .bat files was used to copy back textures from the game build to the assets folder,
+# I don't want to include the noise textures because they originated from the renderer's assets which are kept
+# elsewhere.
+d1/assets/textures/noise
