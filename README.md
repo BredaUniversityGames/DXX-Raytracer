@@ -7,10 +7,9 @@ This build of the game uses the shareware assets. If you have bought the origina
 with your versions to play the whole game.
 
 ## Features
-- Pathtracing
 - Physically-based rendering
 - Soft shadows
-- Global illumination
+- Pathtraced Global illumination
 - Bloom
 - Temporal anti-aliasing
 - Motion blur
