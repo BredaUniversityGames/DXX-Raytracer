@@ -1,4 +1,4 @@
-![scrn0000](https://github.com/BredaUniversityGames/DXX-Raytracer/images/banner)
+![scrn0000](https://github.com/BredaUniversityGames/DXX-Raytracer/blob/main/images/banner.png)
 
 # DXX Raytracer
 DXX Raytracer is a source port of the [DXX Retro](https://github.com/CDarrow/DXX-Retro) project for Windows. DXX Raytracer uses modern raytracing techniques to update the graphics of the beloved retro game known as Descent.
