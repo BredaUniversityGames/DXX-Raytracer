@@ -9,7 +9,7 @@ with your versions to play the whole game.
 ## Features
 - Physically-based rendering
 - Soft shadows
-- Pathtraced Global illumination
+- Pathtraced global illumination
 - Bloom
 - Temporal anti-aliasing
 - Motion blur
