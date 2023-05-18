@@ -1,4 +1,4 @@
-![image](https://github.com/BredaUniversityGames/DXX-Raytracer/assets/34250026/0b4acc54-ea4d-4fb0-8cfb-025927683ab1)
+![scrn0003](https://github.com/BredaUniversityGames/DXX-Raytracer/assets/34250026/2acfa740-8f79-4e78-a977-02a4fc3d79b9)
 
 # DXX Raytracer
 DXX Raytracer is a fork of the [DXX Retro](https://github.com/CDarrow/DXX-Retro) project for Windows. DXX Raytracer uses modern raytracing techniques to update the graphics of the beloved retro game known as Descent.
