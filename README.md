@@ -15,6 +15,9 @@ with your versions to play the whole game.
 - Motion blur
 - Post-processing (Vignette, tonemap, etc.)
 
+## Community discord
+You can join the community discord to make suggestions, report bugs, or just to hang around: https://discord.gg/vaEH5ryjvc
+
 ## Instructions
 - SHIFT + ALT + F1: Open debug menus, more on those below
 - SHIFT + ALT + F2: Toggle depth testing for debug lines
