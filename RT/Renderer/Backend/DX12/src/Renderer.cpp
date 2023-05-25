@@ -175,6 +175,11 @@ RT_ResourceHandle RT_UploadMesh(const RT_UploadMeshParams* params)
 	return RenderBackend::UploadMesh(*params);
 }
 
+void RT_ReleaseMesh(const RT_ResourceHandle mesh_handle)
+{
+	RenderBackend::ReleaseMesh(mesh_handle);
+}
+
 static uint32_t g_override_flags = 0;
 
 uint32_t RT_RaytraceSetRenderFlagsOverride(uint32_t flags)

@@ -237,40 +237,31 @@ void RT_ShowLightMenu()
 		{
 			igPushID_Int(i);
 			RT_LightDefinition* light = &g_light_definitions[i];
+			ushort texture_index = piggy_find_bitmap(light->name).index;
 
-			char* light_name_buffer = RT_ArenaPrintF(&g_thread_arena, "Light: %s", light->name);
-			if (igCollapsingHeader_TreeNodeFlags(light_name_buffer, ImGuiTreeNodeFlags_None)) {
+			if (texture_index > 0){
+				char* light_name_buffer = RT_ArenaPrintF(&g_thread_arena, "Light: %s", light->name);
+				if (igCollapsingHeader_TreeNodeFlags(light_name_buffer, ImGuiTreeNodeFlags_None)) {
 
-				igText("Texture index: %i", piggy_find_bitmap(light->name).index);
+					igText("Texture index: %i", texture_index);
 
-				RT_Material *def = &g_rt_materials[piggy_find_bitmap(light->name).index];
-				RT_RenderImGuiTexture(def->albedo_texture, 64.0, 64.0);
+					RT_Material *def = &g_rt_materials[texture_index];
+					RT_RenderImGuiTexture(def->albedo_texture, 64.0, 64.0);
 
-				igText("Type:");
-				bool changed_type = false;
-				changed_type |= igRadioButton_IntPtr("Sphere", &light->kind, RT_LightKind_Area_Sphere);
-				changed_type |= igRadioButton_IntPtr("Rect", &light->kind, RT_LightKind_Area_Rect);
-				
-				if (changed_type) 
-				{
-					g_pending_light_update = true;
-				}
+					igText("Emission: {%f, %f, %f}", light->emission.x, light->emission.y, light->emission.z);
 
-				igText("Emission: {%f, %f, %f}", light->emission.x, light->emission.y, light->emission.z);
+					if (igColorEdit3("Emission", &light->emission, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR)){
+						g_pending_light_update = true;
+					}
 
-				if (igColorEdit3("Emission", &light->emission, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR))
-				{
-					g_pending_light_update = true;
-				}
+					igSliderFloat("Spot Angle", &light->spot_angle, 0.0f, 1.0f, "%f", ImGuiSliderFlags_None);
+					igSliderFloat("Light Radius", &light->spot_softness, 0.0f, 1.0f, "%f", ImGuiSliderFlags_None);
 
-				igSliderFloat("Spot Angle", &light->spot_angle, 0.0f, 1.0f, "%f", ImGuiSliderFlags_None);
-				igSliderFloat("Light Radius", &light->spot_softness, 0.0f, 1.0f, "%f", ImGuiSliderFlags_None);
-
-				if (light->kind == RT_LightKind_Area_Sphere)
-				{
-					igText("Radius: %f", light->radius);
-					igSliderFloat("Light Radius", &light->radius, 0.0f, 10.0f, "%f", ImGuiSliderFlags_None);
-					g_pending_light_update = true;
+					if (light->kind == RT_LightKind_Area_Sphere){
+						igText("Radius: %f", light->radius);
+						igSliderFloat("Light Radius", &light->radius, 0.0f, 10.0f, "%f", ImGuiSliderFlags_None);
+						g_pending_light_update = true;
+					}
 				}
 			}
 			igPopID();

@@ -346,7 +346,7 @@ float RandomSample(uint2 xy, uint id)
 		uint texture_index  = ((g_global_cb.frame_index + id) / 4) % BLUE_NOISE_TEX_COUNT;
 		uint texture_offset = ((g_global_cb.frame_index + id) % 4);
 
-		float4 s = g_blue_noise[texture_index].Load(uint3((xy + 13*cycle) % 64, 0));
+		float4 s = g_blue_noise[NonUniformResourceIndex(texture_index)].Load(uint3((xy + 13*cycle) % 64, 0));
 		result = s[texture_offset];
 	}
 
@@ -523,7 +523,7 @@ float4 SampleTextureCatmullRom(in Texture2D<float4> tex, in SamplerState linearS
 
 RT_Triangle GetHitTriangle(uint triangle_buffer_idx, uint primitive_idx)
 {
-	return g_bindless_triangle_buffers[triangle_buffer_idx][primitive_idx];
+	return g_bindless_triangle_buffers[NonUniformResourceIndex(triangle_buffer_idx)][primitive_idx];
 }
 
 float2 GetHitAttribute(float2 vertex_attrib[3], float2 bary)
@@ -542,7 +542,7 @@ float3 GetHitAttribute(float3 vertex_attrib[3], float2 bary)
 
 Texture2D GetTextureFromIndex(uint index)
 {
-	return g_bindless_srvs[index];
+	return g_bindless_srvs[NonUniformResourceIndex(index)];
 }
 
 uint GetMaterialIndex(uint material_edge)
@@ -701,31 +701,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 		hit_triangle.uv2,
 	};
 	float2 uv = GetHitAttribute(uvs, barycentrics);
-
-	float2 uv_rotated;
-
-	switch (orient)
-	{
-	case 1:
-	{
-		uv_rotated = float2(1.0 - uv.y, uv.x);
-	} break;
-
-	case 2:
-	{
-		uv_rotated = float2(1.0 - uv.x, 1.0 - uv.y);
-	} break;
-
-	case 3:
-	{
-		uv_rotated = float2(uv.y, 1.0 - uv.x);
-	} break;
-
-	default:
-	{
-		uv_rotated = uv;
-	} break;
-	}
+	float2 uv_rotated = GetRotatedUVs(orient, uv);
 
 	// TODO(daniel): Clean this messy silly code up!
 	if (material_index2 != 0xFFFFFFFF)

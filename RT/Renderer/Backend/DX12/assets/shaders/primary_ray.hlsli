@@ -16,13 +16,6 @@ void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload)
     TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 0, 0, ray, payload);
 }
 
-struct GeometryRayInput
-{
-    RayDesc ray_desc;
-    PrimaryRayPayload ray_payload;
-    uint recursion_depth;
-};
-
 struct GeometryRayOutput
 {
     InstanceData instance_data;
@@ -40,30 +33,30 @@ struct GeometryRayOutput
     float2 vis_bary;
 };
 
-void GetGeometryDataFromPrimaryRay(in GeometryRayInput IN, inout GeometryRayOutput OUT)
+void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_payload, uint recursion_depth, inout GeometryRayOutput OUT)
 {
     // -------------------------------------------------------------------------------------
     // Determine gbuffer hit world direction value
 
-    OUT.view_dir = IN.ray_desc.Direction;
+    OUT.view_dir = ray_desc.Direction;
 
     // -------------------------------------------------------------------------------------
     // Determine gbuffer visibility values
 
-    OUT.vis_prim = uint2(IN.ray_payload.instance_idx, IN.ray_payload.primitive_idx);
-    OUT.vis_bary = IN.ray_payload.barycentrics;
+    OUT.vis_prim = uint2(ray_payload.instance_idx, ray_payload.primitive_idx);
+    OUT.vis_bary = ray_payload.barycentrics;
 
     if (HasHitGeometry(OUT.vis_prim))
     {
         // Get instance data and hit triangle
-        OUT.instance_data = g_instance_data_buffer[IN.ray_payload.instance_idx];
-        OUT.hit_triangle = GetHitTriangle(OUT.instance_data.triangle_buffer_idx, IN.ray_payload.primitive_idx);
+        OUT.instance_data = g_instance_data_buffer[ray_payload.instance_idx];
+        OUT.hit_triangle = GetHitTriangle(OUT.instance_data.triangle_buffer_idx, ray_payload.primitive_idx);
 
         // -------------------------------------------------------------------------------------
         // Set up hit material
 
         float2 uv = 0;
-        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, IN.ray_payload.barycentrics, OUT.material_index, uv);
+        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, ray_payload.barycentrics, OUT.material_index, uv);
         Material hit_material = g_materials[OUT.material_index];
 
         float3 emissive_factor = UnpackRGBE(hit_material.emissive_factor);
@@ -133,7 +126,7 @@ void GetGeometryDataFromPrimaryRay(in GeometryRayInput IN, inout GeometryRayOutp
                 OUT.hit_triangle.normal1,
                 OUT.hit_triangle.normal2,
             };
-            float3 interpolated_normal = GetHitAttribute(normals, IN.ray_payload.barycentrics);
+            float3 interpolated_normal = GetHitAttribute(normals, ray_payload.barycentrics);
             float3 normal = interpolated_normal;
 
             // Calculate normal from normal map
@@ -144,7 +137,7 @@ void GetGeometryDataFromPrimaryRay(in GeometryRayInput IN, inout GeometryRayOutp
                     OUT.hit_triangle.tangent1.xyz,
                     OUT.hit_triangle.tangent2.xyz,
                 };
-                float3 tangent = GetHitAttribute(tangents, IN.ray_payload.barycentrics);
+                float3 tangent = GetHitAttribute(tangents, ray_payload.barycentrics);
                 float3 bitangent = cross(interpolated_normal, tangent) * OUT.hit_triangle.tangent0.w;
 
                 // Bring the normal map sample from tangent space to world space
@@ -192,7 +185,7 @@ void GetGeometryDataFromPrimaryRay(in GeometryRayInput IN, inout GeometryRayOutp
             // -------------------------------------------------------------------------------------
             // Determine gbuffer depth value
             
-            OUT.depth = IN.ray_payload.hit_distance;
+            OUT.depth = ray_payload.hit_distance;
 
             // -------------------------------------------------------------------------------------
             // Determine gbuffer metallic roughness value
@@ -221,7 +214,7 @@ void GetGeometryDataFromPrimaryRay(in GeometryRayInput IN, inout GeometryRayOutp
             // Increase the roughness of secondary bounces to combat fireflies
             // ad-hoc implementation, TODO: learn about path space regularization
             // properly.
-            if (tweak.path_space_regularization && IN.recursion_depth > 0)
+            if (tweak.path_space_regularization && recursion_depth > 0)
             {
                 OUT.roughness = 1.0; // max(lerp(0.5, 0.2, metallic_roughness.y), metallic_roughness.y);
             }

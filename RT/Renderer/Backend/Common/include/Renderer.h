@@ -280,6 +280,7 @@ RT_API RT_ResourceHandle RT_UploadTexture(const RT_UploadTextureParams* params);
 // Returns the material_index you passed in, or UINT16_MAX if it was out of bounds.
 RT_API uint16_t RT_UpdateMaterial(uint16_t material_index, const RT_Material *material);
 RT_API RT_ResourceHandle RT_UploadMesh(const RT_UploadMeshParams* params);
+RT_API void RT_ReleaseMesh(const RT_ResourceHandle mesh_handle);
 RT_API bool RT_GenerateTangents(RT_Triangle *triangles, size_t triangle_count); // Will modify triangles in-place to add tangent vectors
 
 RT_API RT_ResourceHandle RT_GetDefaultWhiteTexture(void);

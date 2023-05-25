@@ -68,8 +68,6 @@ namespace RT
 
         void Remove(RT_ResourceHandle handle)
         {
-            T *result = nullptr;
-
             Slot *sentinel = &m_slots[0];
             if (RT_RESOURCE_HANDLE_VALID(handle))
             {

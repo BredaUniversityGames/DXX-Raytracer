@@ -72,17 +72,15 @@ void PrimaryRaygen()
 #endif
 
     // Set up geometry input for primary ray trace
-    GeometryRayInput geo_ray_input = (GeometryRayInput)0;
-    geo_ray_input.ray_desc.Origin = world_p;
-    geo_ray_input.ray_desc.Direction = world_d;
-    geo_ray_input.ray_desc.TMin = RT_RAY_T_MIN;
-    geo_ray_input.ray_desc.TMax = RT_RAY_T_MAX;
-
-    geo_ray_input.ray_payload = (PrimaryRayPayload)0;
-    geo_ray_input.recursion_depth = 0;
+    PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
+    RayDesc ray_desc = (RayDesc)0;
+    ray_desc.Origin = world_p;
+    ray_desc.Direction = world_d;
+    ray_desc.TMin = RT_RAY_T_MIN;
+    ray_desc.TMax = RT_RAY_T_MAX;
 
     // Trace the primary ray
-    TracePrimaryRay(geo_ray_input.ray_desc, geo_ray_input.ray_payload);
+    TracePrimaryRay(ray_desc, ray_payload);
 
     // Set up geometry output from primary ray trace and set non-zero defaults where necessary
     GeometryRayOutput geo_ray_output = (GeometryRayOutput)0;
@@ -90,8 +88,8 @@ void PrimaryRaygen()
     geo_ray_output.depth = RT_RAY_T_MAX;
 
     // Get geometry data from primary ray trace
-    GetGeometryDataFromPrimaryRay(geo_ray_input, geo_ray_output);
-    float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, geo_ray_input.ray_desc.Direction, geo_ray_input.ray_payload.hit_distance);
+    GetGeometryDataFromPrimaryRay(ray_desc, ray_payload, 0, geo_ray_output);
+    float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, ray_desc.Direction, ray_payload.hit_distance);
 
 	// -------------------------------------------------------------------------------------
 	// Determine gbuffer motion value

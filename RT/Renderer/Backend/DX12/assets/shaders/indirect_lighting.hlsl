@@ -172,23 +172,21 @@ void IndirectLightingRaygen()
 			float3 gbuf_world_p = ReconstructWorldPosFromGBuffer(dispatch_idx);
 
 			// Set up geometry input for primary ray trace
-			GeometryRayInput geo_ray_input = (GeometryRayInput)0;
-			geo_ray_input.ray_desc.Origin = gbuf_world_p + 0.01f * gbuf_normal;
-			geo_ray_input.ray_desc.Direction = bounce_direction;
-			geo_ray_input.ray_desc.TMin = RT_RAY_T_MIN;
-			geo_ray_input.ray_desc.TMax = RT_RAY_T_MAX;
-
-			geo_ray_input.ray_payload = (PrimaryRayPayload)0;
-			geo_ray_input.recursion_depth = 1;
+			PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
+			RayDesc ray_desc = (RayDesc)0;
+			ray_desc.Origin = gbuf_world_p + 0.01f * gbuf_normal;
+			ray_desc.Direction = bounce_direction;
+			ray_desc.TMin = RT_RAY_T_MIN;
+			ray_desc.TMax = RT_RAY_T_MAX;
 
 			// Trace the primary ray
-			TracePrimaryRay(geo_ray_input.ray_desc, geo_ray_input.ray_payload);
+			TracePrimaryRay(ray_desc, ray_payload);
 
 			// Set up geometry output from primary ray trace and set non-zero defaults where necessary
 			GeometryRayOutput geo_ray_output = (GeometryRayOutput)0;
 
 			// Get geometry data from primary ray trace
-			GetGeometryDataFromPrimaryRay(geo_ray_input, geo_ray_output);
+			GetGeometryDataFromPrimaryRay(ray_desc, ray_payload, 1, geo_ray_output);
 
 			// Set up direct lighting output
 			DirectLightingOutput direct_lighting_output = (DirectLightingOutput)0;

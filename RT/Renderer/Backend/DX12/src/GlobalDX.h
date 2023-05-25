@@ -285,7 +285,7 @@ namespace RT
 
 		DescriptorArena rtv;
 		DescriptorArena dsv;
-		DescriptorArena cbv_srv_uav;
+		DescriptorArenaFreelist cbv_srv_uav;
 		DescriptorArena cbv_srv_uav_staging;
 
 		IDXGISwapChain4* dxgi_swapchain4;

@@ -374,7 +374,6 @@ extern int num_objects;
 #ifdef RT_DX12
 typedef struct RT_SubmodelTransforms
 {
-	uint64_t last_frame_updated[MAX_SUBMODELS];
 	RT_Mat4 transforms[MAX_SUBMODELS];
 } RT_SubmodelTransforms;
 extern RT_SubmodelTransforms g_rt_prev_submodel_transforms[];

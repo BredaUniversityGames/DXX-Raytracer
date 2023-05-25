@@ -172,7 +172,9 @@ void RT_Event_Poll(ImGuiIO* io, SDL_Event* ev, int* clean_uniframe, int* idle)
 
 			//Only do input on true
 			{
+#if 0
 				RT_LOGF(RT_LOGSERVERITY_INFO, "KEY EVENT: %i STATE: %i", event.key.keysym.scancode, (event.key.type == SDL_KEYDOWN));
+#endif
 				ImGuiKey key = RT_SDLKeycodeToImGuiKey(event.key.keysym.sym);
 
 				/// Old way of doing it, we do not update key modifiers we just take the key and add the modifier since clicking can also use shift or cntrl.
@@ -224,9 +226,10 @@ void RT_Event_Poll(ImGuiIO* io, SDL_Event* ev, int* clean_uniframe, int* idle)
 
 		case SDL_MOUSEMOTION:
 			idle = 0;
+			
 			ImGuiIO_AddMousePosEvent(io, (float)event.motion.x, (float)event.motion.y);
-
-			mouse_motion_handler((SDL_MouseMotionEvent*)&event);
+			if (!igIsWindowFocused(ImGuiFocusedFlags_AnyWindow))
+				mouse_motion_handler((SDL_MouseMotionEvent*)&event);
 			
 			break;
 

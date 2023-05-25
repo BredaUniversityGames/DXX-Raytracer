@@ -1787,6 +1787,8 @@ BufferAllocation RT::AllocateFromUploadBuffer(FrameData *frame, size_t size, siz
 
 void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 {
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+
 	g_d3d.hWnd = reinterpret_cast<HWND>(render_init_params->window_handle);
 	g_d3d.arena = render_init_params->arena;
 
@@ -2499,6 +2501,15 @@ RT_ResourceHandle RenderBackend::UploadMesh(const RT_UploadMeshParams& mesh_para
 	resource.triangle_buffer_descriptor = result.triangle_buffer_descriptor;
 
 	return g_mesh_slotmap.Insert(resource);
+}
+
+void RenderBackend::ReleaseMesh(const RT_ResourceHandle mesh_handle)
+{
+	MeshResource* mesh_resource = g_mesh_slotmap.Find(mesh_handle);
+	RT_RELEASE_RESOURCE(mesh_resource->triangle_buffer);
+	RT_RELEASE_RESOURCE(mesh_resource->blas);
+	g_d3d.cbv_srv_uav.Free(mesh_resource->triangle_buffer_descriptor);
+	g_mesh_slotmap.Remove(mesh_handle);
 }
 
 uint16_t RenderBackend::UpdateMaterial(uint16_t material_index, const RT_Material *material)

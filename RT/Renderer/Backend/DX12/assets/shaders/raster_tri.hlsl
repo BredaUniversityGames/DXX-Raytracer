@@ -37,6 +37,6 @@ SamplerState g_sampler : register(s0);
 
 float4 PixelShaderEntry(VertexShaderOutput IN) : SV_Target
 {
-	float4 sampled_color = g_bindless_srvs[IN.TextureIndex].SampleLevel(g_sampler, IN.TexCoord, 0);
+	float4 sampled_color = g_bindless_srvs[NonUniformResourceIndex(IN.TextureIndex)].SampleLevel(g_sampler, IN.TexCoord, 0);
 	return IN.Color * sampled_color;
 }

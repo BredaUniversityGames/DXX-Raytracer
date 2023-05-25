@@ -34,18 +34,20 @@
 
 namespace RT
 {
-
+	// NOTE(Justin): The bitfields that existed here before broke the raytracing shaders (debugging them, as no PDB was found).
+	// I do not know why, I wish I knew, and also why did it work with compute though?? Why did it not give any warnings or errors??
+	// Only god knows.
 struct Material
 {
-	uint   albedo_index     : 16; // 2
-	uint   normal_index     : 16; // 4
-	uint   metalness_index  : 16; // 6
-	uint   roughness_index  : 16; // 8
-	uint   emissive_index   : 16; // 10
-	uint   flags            : 16; // 12
-	float  metalness_factor;      // 16
-	float  roughness_factor;      // 20
-	uint   emissive_factor;       // 24 (RGBE)
+	uint   albedo_index;
+	uint   normal_index;
+	uint   metalness_index;
+	uint   roughness_index;
+	uint   emissive_index;
+	uint   flags;
+	float  metalness_factor;
+	float  roughness_factor;
+	uint   emissive_factor;
 };
 
 struct InstanceData

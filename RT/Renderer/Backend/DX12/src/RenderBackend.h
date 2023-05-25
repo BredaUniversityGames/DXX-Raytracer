@@ -27,6 +27,7 @@ namespace RenderBackend
 
 	RT_ResourceHandle UploadTexture(const RT_UploadTextureParams& texture_params);
 	RT_ResourceHandle UploadMesh(const RT_UploadMeshParams& mesh_params);
+	void ReleaseMesh(const RT_ResourceHandle mesh_handle);
 	uint16_t UpdateMaterial(uint16_t material_index, const RT_Material *material);
 
 	RT_ResourceHandle GetDefaultWhiteTexture();

@@ -507,6 +507,7 @@ static void RT_GetPolyData(RT_TriangleBuffer *buf,
 				}
 
 				short color = w(p + 28);
+
 				// NOTE(daniel): I hope the palette is initialized correctly!
 				ubyte r = gr_palette[color*3 + 0]*4;
 				ubyte g = gr_palette[color*3 + 1]*4;
@@ -839,78 +840,68 @@ void RT_DrawSubPolyModel(const RT_ResourceHandle submodel, const RT_Mat4* const 
 	}
 }
 
-void RT_DrawPolySubModelTree(const polymodel* model, const vms_angvec* const anim_angles, int index, const int obj_num, const RT_Mat4 submodel_transform) {
-	bool rendered_before = false;
+void RT_DrawPolySubModelTree(const polymodel* model, const vms_angvec* const anim_angles, int index, const int obj_num, const RT_Mat4 submodel_transform)
+{
+	RT_SubmodelTransforms* prev_transforms = &g_rt_prev_submodel_transforms[obj_num];
 
+	RT_Mat4 prev_transform = prev_transforms->transforms[index];
+
+	// NOTE (Sam)
+	// I think this is not an issue anymore as the double draw only happened when shooting the lasers.
+	// Even before we make a new system for the motion vectors it will still not effect anything.
+#if 0
 	typedef struct RT_ObjRenderDebug
 	{
 		uint64_t submodels[MAX_SUBMODELS];
 	} RT_ObjRenderDebug;
-
 	static RT_ObjRenderDebug obj_num_last_frame_rendered[MAX_OBJECTS];
 	if (g_rt_frame_index != 0 && obj_num_last_frame_rendered[obj_num].submodels[index] == g_rt_frame_index)
 	{
-		// This should never happen. There is a check for this exact kind of thing in render.c, line 592.
-		// So why is it happening?
-		rendered_before = true;
-		// This is very spammy so turn it on when you want to actually see it.
-#if 0
+		prev_transform = submodel_transform;
+		// NOTE(daniel): This issue of different rendered meshes not being properly uniquely identified will be fixed
+		// differently, so for now just render things twice and bust the motion vectors a little bit.
 		RT_LOGF(RT_LOGSERVERITY_INFO, "Submodel %d, %d was rendered more than once on frame %llu", obj_num, index, g_rt_frame_index);
-#endif
+
 	}
 	obj_num_last_frame_rendered[obj_num].submodels[index] = g_rt_frame_index;
+#endif
 
-	// NOTE(daniel): This issue of different rendered meshes not being properly uniquely identified will be fixed
-	// differently, so for now just render things twice and bust the motion vectors a little bit.
-	// if (!rendered_before)
-	{
-		RT_SubmodelTransforms *prev_transforms = &g_rt_prev_submodel_transforms[obj_num];
+	// Draw the submodel
+	RT_DrawSubPolyModel(model->submodel[index], &submodel_transform, &prev_transform);
+	prev_transforms->transforms[index] = submodel_transform;
 
-		RT_Mat4 prev_transform = prev_transforms->transforms[index];
-		if (prev_transforms->last_frame_updated[index] != g_rt_frame_index - 1)
-		{
-			RT_LOGF(RT_LOGSERVERITY_INFO, "Prev submodel transform (%d:%d) was not from the previous frame.", obj_num, index);
-			prev_transform = submodel_transform;
+	// Traverse tree structure
+	for (int i = 0; i < model->model_tree[index].n_children; ++i) {
+		// anim_angles is an array, where the indices into that array allegedly correspond directly to the child indices :D
+		const int child_index = model->model_tree[index].child_indices[i];
+
+		vms_angvec anim_angles_final;
+		if (anim_angles) {
+			anim_angles_final.p = anim_angles[child_index].p;
+			anim_angles_final.b = anim_angles[child_index].b;
+			anim_angles_final.h = anim_angles[child_index].h;
+		}
+		else {
+			anim_angles_final.p = zero_angles.p;
+			anim_angles_final.b = zero_angles.b;
+			anim_angles_final.h = zero_angles.h;
 		}
 
-		// Draw the submodel
-		RT_DrawSubPolyModel(model->submodel[index], &submodel_transform, &prev_transform);
-		prev_transforms->transforms[index] = submodel_transform;
-		prev_transforms->last_frame_updated[index] = g_rt_frame_index;
+		// Get matrix from local position offset
+		const vms_vector offset_vms = model->submodel_offsets[child_index];
+		const RT_Vec3 offset_vec3 = RT_Vec3Fromvms_vector(&offset_vms);
+		RT_Mat4 offset_mat4 = RT_Mat4FromTranslation(offset_vec3);
+		offset_mat4 = RT_Mat4Mul(submodel_transform, offset_mat4);
 
-		// Traverse tree structure
-		for (int i = 0; i < model->model_tree[index].n_children; ++i) {
-			// anim_angles is an array, where the indices into that array allegedly correspond directly to the child indices :D
-			const int child_index = model->model_tree[index].child_indices[i];
+		// Get matrix from rotation offset
+		vms_matrix rotation_vms;
+		vm_angles_2_matrix(&rotation_vms, &anim_angles_final);
+		RT_Mat4 rotation_mat4 = RT_Mat4Fromvms_matrix(&rotation_vms);
 
-			vms_angvec anim_angles_final;
-			if (anim_angles) {
-				anim_angles_final.p = anim_angles[child_index].p;
-				anim_angles_final.b = anim_angles[child_index].b;
-				anim_angles_final.h = anim_angles[child_index].h;
-			}
-			else {
-				anim_angles_final.p = zero_angles.p;
-				anim_angles_final.b = zero_angles.b;
-				anim_angles_final.h = zero_angles.h;
-			}
+		// Combine them into one big matrix
+		RT_Mat4 combined_matrix = RT_Mat4Mul(offset_mat4, rotation_mat4);
 
-			// Get matrix from local position offset
-			const vms_vector offset_vms = model->submodel_offsets[child_index];
-			const RT_Vec3 offset_vec3 = RT_Vec3Fromvms_vector(&offset_vms);
-			RT_Mat4 offset_mat4 = RT_Mat4FromTranslation(offset_vec3);
-			offset_mat4 = RT_Mat4Mul(submodel_transform, offset_mat4);
-
-			// Get matrix from rotation offset
-			vms_matrix rotation_vms;
-			vm_angles_2_matrix(&rotation_vms, &anim_angles_final);
-			RT_Mat4 rotation_mat4 = RT_Mat4Fromvms_matrix(&rotation_vms);
-
-			// Combine them into one big matrix
-			RT_Mat4 combined_matrix = RT_Mat4Mul(offset_mat4, rotation_mat4);
-
-			RT_DrawPolySubModelTree(model, anim_angles, child_index, obj_num, combined_matrix);
-		}
+		RT_DrawPolySubModelTree(model, anim_angles, child_index, obj_num, combined_matrix);
 	}
 }
 

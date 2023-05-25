@@ -24,7 +24,7 @@
 RT_ResourceHandle g_level_resource = { 0 };
 int g_active_level = 0;
 
-int m_light_count = 1;
+int m_light_count = 0;
 RT_Light m_lights[1024] = {0};
 int m_lights_definitions[1024] = {0};
 side* m_extracted_light_sides[1024] = {0};
@@ -204,6 +204,8 @@ void RT_ExtractLightsFromSide(side *side, RT_Vertex *vertices, RT_Vec3 normal)
 
 bool RT_LoadLevel() 
 {
+
+
 	assert(!RT_RESOURCE_HANDLE_VALID(g_level_resource));
 	// Load level geometry
 	g_level_resource = RT_UploadLevelGeometry();
@@ -254,8 +256,7 @@ void RT_RenderLevel(RT_Vec3 player_pos)
 	// ------------------------------------------------------------------
 
 	// Unload current level if other level becomes active.
-	// TODO: Given mesh unloading is currently not supported, this function will leak memory!!
-	if (g_active_level != Current_level_num)
+	if (g_active_level != Current_level_num && RT_RESOURCE_HANDLE_VALID(g_level_resource))
 	{
 		RT_UnloadLevel();
 	}
@@ -275,7 +276,7 @@ void RT_RenderLevel(RT_Vec3 player_pos)
 
 bool RT_UnloadLevel() 
 {
-	// TODO: Unload mesh doesn't exsist yet, level will leak now.
+	RT_ReleaseMesh(g_level_resource);
 	g_level_resource = RT_RESOURCE_HANDLE_NULL;
 
 	m_light_count = 0;

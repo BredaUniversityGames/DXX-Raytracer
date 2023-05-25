@@ -607,7 +607,6 @@ void draw_polygon_model(_RT_DRAW_POLY vms_vector* pos, vms_matrix* orient, vms_a
 				RT_Mat4 prev_transform = g_rt_prev_submodel_transforms[objNum].transforms[i];
 				RT_DrawSubPolyModel(po->submodel[i], &combined_matrix, &prev_transform);
 				g_rt_prev_submodel_transforms[objNum].transforms[i] = combined_matrix;
-				g_rt_prev_submodel_transforms[objNum].last_frame_updated[i] = g_rt_frame_index;
 #endif //RT_DX12
 
 				g3_done_instance();
@@ -709,20 +708,11 @@ int load_polygon_model(char* filename, int n_textures, grs_bitmap*** textures)
 
 	polyobj_find_min_max(&Polygon_models[N_polygon_models]);
 
-#ifndef RT_DX12
 	g3_init_polygon_model(Polygon_models[N_polygon_models].model_data);
-#else
-	//Note: Stan
-	//Still have to call this function to render the polygon models correclty.
-	//Sam will look at this later.
-	g3_init_polygon_model(Polygon_models[N_polygon_models].model_data);
-	
-	// NOTE(daniel): What's this call? Why are we initializing poly models in multiple places?
-	//RT_InitPolyModel(N_polygon_models, robot_points, Polygon_models[N_polygon_models].model_data, NULL, 0);
-#endif //RT_DX12
 
-	if (highest_texture_num + 1 != n_textures)
-		RT_LOGF(RT_LOGSERVERITY_HIGH, "Model <%s> references %d textures but specifies %d.", filename, highest_texture_num + 1, n_textures);
+	//Don't need this log, because we don't use highest_texture_num on dx12
+	//if (highest_texture_num + 1 != n_textures)
+	//	RT_LOGF(RT_LOGSERVERITY_HIGH, "Model <%s> references %d textures but specifies %d.", filename, highest_texture_num + 1, n_textures);
 
 	Polygon_models[N_polygon_models].n_textures = n_textures;
 	Polygon_models[N_polygon_models].first_texture = first_texture;
