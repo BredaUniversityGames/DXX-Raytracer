@@ -276,6 +276,7 @@ namespace RT
 		RT_ResourceHandle pink_checkerboard_texture;
 
 		RT_ResourceHandle billboard_quad;
+		RT_ResourceHandle cube;
 
 		RT_Arena *arena;
 

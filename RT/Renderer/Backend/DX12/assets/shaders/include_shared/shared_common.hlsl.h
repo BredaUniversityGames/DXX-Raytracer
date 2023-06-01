@@ -10,7 +10,7 @@
 // ------------------------------------------------------------------
 // Defines, constants, etc
 
-#define RT_PIXEL_DEBUG 0
+#define RT_PIXEL_DEBUG 0 // TODO(daniel): Make this be dependent on the build configuration and make it stand out in the GPU profiler so you can tell it apart from actual work
 #define GROUP_X 16
 #define GROUP_Y 16
 #define BLUE_NOISE_TEX_COUNT 16
@@ -79,6 +79,9 @@ struct GlobalConstantBuffer
 	uint     debug_flags;
 	uint     debug_render_mode;
 	uint     lights_count;
+
+	// Color overlay for being shot at or picking up items.
+	float4	 screen_color_overlay;
 
     // Viewport offset, effectively offsets the center of the viewport after projecting
     float    viewport_offset_y;

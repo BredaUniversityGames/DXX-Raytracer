@@ -69,7 +69,9 @@ void joy_button_handler(SDL_JoyButtonEvent *jbe)
 
 	event.type = (jbe->type == SDL_JOYBUTTONDOWN) ? EVENT_JOYSTICK_BUTTON_DOWN : EVENT_JOYSTICK_BUTTON_UP;
 	event.button = button;
+#if 0
 	RT_LOGF(RT_LOGSERVERITY_INFO, "Sending event %s, button %d\n", (jbe->type == SDL_JOYBUTTONDOWN) ? "EVENT_JOYSTICK_BUTTON_DOWN" : "EVENT_JOYSTICK_JOYSTICK_UP", event.button);
+#endif
 	event_send((d_event *)&event);
 }
 
@@ -125,7 +127,9 @@ int joy_axis_handler(SDL_JoyAxisEvent *jae)
 	event.type = EVENT_JOYSTICK_MOVED;
 	event.axis = axis;
 	event.value = Joystick.axis_value[axis] = jae->value/256;
+#if 0
 	RT_LOGF(RT_LOGSERVERITY_INFO, "Sending event EVENT_JOYSTICK_MOVED, axis: %d, value: %d\n", event.axis, event.value);
+#endif
 	event_send((d_event *)&event);
 
 	return 1;

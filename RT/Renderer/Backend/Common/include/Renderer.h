@@ -102,6 +102,7 @@ typedef struct RT_RendererIO
 	// in:
 	bool scene_transition; // set to true on a frame where there is a jumpcut or scene transition to avoid ghosting
 	bool debug_line_depth_enabled;
+	RT_Vec4 screen_overlay_color;
 
 	// in/out:
 	int debug_render_mode;

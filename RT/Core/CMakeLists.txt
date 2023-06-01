@@ -13,6 +13,7 @@ add_library(RT_CORE INTERFACE
 target_sources(RT_CORE INTERFACE
 "${CMAKE_CURRENT_LIST_DIR}/Config.cpp"
 "${CMAKE_CURRENT_LIST_DIR}/Arena.c"
+"${CMAKE_CURRENT_LIST_DIR}/Common.c"
 "${CMAKE_CURRENT_LIST_DIR}/String.c"
 "${CMAKE_CURRENT_LIST_DIR}/VirtualMemory.c"
 )

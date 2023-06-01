@@ -19,6 +19,55 @@
 // to print counted strings.
 #define RT_ExpandString(s) (int)(s).count, (s).bytes
 
+// Just does what strncpy does but also null terminates the string if it doesn't fit in the destination buffer.
+// BECAUSE THAT'S WHAT IT SHOULD DO. WHO WROTE STRNCPY. WHAT THE HECK.
+static inline char *RT_SaneStrncpy(char *dst, const char *src, size_t count)
+{
+	if (count > 0)
+	{
+		size_t src_count = strlen(src);
+		size_t cpy_count = RT_MIN(src_count, count - 1);
+
+		if (cpy_count > 0)
+		{
+			memcpy(dst, src, cpy_count);
+		}
+
+		// always null terminate...
+		dst[cpy_count] = '\0';
+	}
+	return dst;
+}
+
+static inline char *RT_FormatHumanReadableBytes(RT_Arena *arena, size_t bytes)
+{
+	size_t log = 0;
+	for (size_t x = bytes / 1024; x > 0; x /= 1024) log += 1;
+
+	char *string = NULL;
+	if (log == 0)
+	{
+		string = RT_ArenaPrintF(arena, "%zuB", bytes);
+	}
+	else if (log == 1)
+	{
+		string = RT_ArenaPrintF(arena, "%zuKiB", bytes / 1024);
+	}
+	else if (log == 2)
+	{
+		string = RT_ArenaPrintF(arena, "%zuMiB", bytes / 1024 / 1024);
+	}
+	else if (log == 3)
+	{
+		string = RT_ArenaPrintF(arena, "%zuGiB", bytes / 1024 / 1024 / 1024);
+	}
+	else if (log >= 4)
+	{
+		string = RT_ArenaPrintF(arena, "%zuTiB", bytes / 1024 / 1024 / 1024 / 1024);
+	}
+	return string;
+}
+
 static inline RT_String RT_StringFromCString(const char *c_string)
 {
 	size_t count = 0;

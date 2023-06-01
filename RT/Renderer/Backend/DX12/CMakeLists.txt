@@ -92,6 +92,7 @@ set_target_properties ( Renderer PROPERTIES
 set_property(TARGET Renderer PROPERTY CXX_STANDARD 17)
 
 add_compile_definitions(UNICODE=1)
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS) # microsoft is a menace
 
 target_include_directories(Renderer PUBLIC
     "include"

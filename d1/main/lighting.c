@@ -220,7 +220,11 @@ void apply_light(g3s_lrgb obj_light_emission, int obj_seg, vms_vector *obj_pos, 
 #define FLASH_SCALE             (3*F1_0/FLASH_LEN_FIXED_SECONDS)
 
 // ----------------------------------------------------------------------------------------------
+#ifndef RT_DX12
 void cast_muzzle_flash_light(int n_render_vertices, int *render_vertices, int *vert_segnum_list)
+#else
+void cast_muzzle_flash_light()
+#endif
 {
 	fix64 current_time;
 	int i;
@@ -528,7 +532,6 @@ g3s_lrgb compute_light_emission(int objnum)
 			RT_RaytraceSubmitLight(flare);
 	}
 #endif
-
 	return lemission;
 }
 
@@ -549,6 +552,7 @@ void set_dynamic_light(void)
 	if (!Do_dynamic_light)
 		return;
 
+#ifndef RT_DX12
 	light_time += FrameTime;
 	if (light_time < (F1_0/60)) // it's enough to stress the CPU 60 times per second
 		return;
@@ -587,6 +591,9 @@ void set_dynamic_light(void)
 	}
 
 	cast_muzzle_flash_light(n_render_vertices, render_vertices, vert_segnum_list);
+#else
+	cast_muzzle_flash_light();
+#endif
 
 	for (objnum=0; objnum<=Highest_object_index; objnum++)
 	{
@@ -596,8 +603,10 @@ void set_dynamic_light(void)
 
 		obj_light_emission = compute_light_emission(objnum);
 
+#ifndef RT_DX12
 		if (((obj_light_emission.r+obj_light_emission.g+obj_light_emission.b)/3) > 0)
 			apply_light(obj_light_emission, obj->segnum, objpos, n_render_vertices, render_vertices, vert_segnum_list, objnum);
+#endif
 	}
 }
 

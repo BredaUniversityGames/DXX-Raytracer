@@ -1,11 +1,9 @@
 // ------------------------------------------------------------------------------------------------------------
 // Tweak variables file.
-// Each tweak variable declared is accessible in HLSL and C++ through the TweakVars struct, with sub-structs
-// per category:
-//
+// Each tweak variable declared is accessible in HLSL and C++ through the TweakVars struct:
 // TweakVars vars;
-// vars.pt.enable_pbr = false;
-// vars.svgf.depth_sigma = 420;
+// vars.enable_pbr = false;
+// vars.svgf_depth_sigma = 420;
 //
 // The following are supported:
 // TWEAK_CATEGORY_BEGIN(name)                                              // begin a category

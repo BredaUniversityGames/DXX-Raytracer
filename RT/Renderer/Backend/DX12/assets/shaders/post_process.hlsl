@@ -236,5 +236,9 @@ void PostProcessCS(int2 co : SV_DispatchThreadID)
 	}
 
 	float3 final_color = lerp(color, debug_color, debug_blend_factor);
+
+	//Adding the color overlay for picking stuff up/damaged to the final color.
+	final_color = final_color + g_global_cb.screen_color_overlay.xyz;
+
 	img_color[co] = float4(final_color, 1.0);
 }

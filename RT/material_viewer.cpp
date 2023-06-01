@@ -484,7 +484,7 @@ void RT_DoMaterialViewerMenus()
 		}
 	}
 
-	if (ImGui::Begin("Material Editor", nullptr, ImGuiWindowFlags_MenuBar))
+	if (ImGui::Begin("Material Editor", nullptr, ImGuiWindowFlags_MenuBar|ImGuiWindowFlags_AlwaysVerticalScrollbar))
 	{
 		if (ImGui::BeginMenuBar())
 		{
@@ -585,7 +585,7 @@ void RT_DoMaterialViewerMenus()
 
 			bool first_drawn_texture = true;
 
-			for (uint16_t bm_index = 1; bm_index < MAX_BITMAP_FILES; bm_index++)
+			for (uint16_t bm_index = 0; bm_index < MAX_BITMAP_FILES; bm_index++)
 			{
 				grs_bitmap *bitmap = &GameBitmaps[bm_index];
 

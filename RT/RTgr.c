@@ -263,34 +263,26 @@ void gr_palette_read(ubyte* pal)
 	}
 }
 
-float last_r = 0, last_g = 0, last_b = 0;
-int do_pal_step = 0;
-int ogl_brightness_ok = 0;
-int ogl_brightness_r = 0, ogl_brightness_g = 0, ogl_brightness_b = 0;
-static int old_b_r = 0, old_b_g = 0, old_b_b = 0;
+int screen_flash_mul = 1;
 
 void gr_palette_step_up(int r, int g, int b)
 {
-	old_b_r = ogl_brightness_r;
-	old_b_g = ogl_brightness_g;
-	old_b_b = ogl_brightness_b;
+	RT_Vec4 screen_flash_color = { 0, 0, 0, 1 };
 
-	ogl_brightness_r = max(r + gr_palette_gamma, 0);
-	ogl_brightness_g = max(g + gr_palette_gamma, 0);
-	ogl_brightness_b = max(b + gr_palette_gamma, 0);
+	r = r * screen_flash_mul;
+	g = g * screen_flash_mul;
+	b = b * screen_flash_mul;
 
-	if (!ogl_brightness_ok)
-	{
-		last_r = ogl_brightness_r / 63.0;
-		last_g = ogl_brightness_g / 63.0;
-		last_b = ogl_brightness_b / 63.0;
+	screen_flash_color.x = (float)max((r + gr_palette_gamma), 0);
+	screen_flash_color.y = (float)max((g + gr_palette_gamma), 0);
+	screen_flash_color.z = (float)max((b + gr_palette_gamma), 0);
 
-		do_pal_step = (r || g || b || gr_palette_gamma);
-	}
-	else
-	{
-		do_pal_step = 0;
-	}
+	screen_flash_color.x = screen_flash_color.x / 63.0f;
+	screen_flash_color.y = screen_flash_color.y / 63.0f;
+	screen_flash_color.z = screen_flash_color.z / 63.0f;
+
+	RT_RendererIO* io = RT_GetRendererIO();
+	io->screen_overlay_color = screen_flash_color;
 }
 
 void gr_flip(void)
@@ -826,13 +818,15 @@ void RT_DrawPolyModel(const int meshnumber, const int objNum, ubyte object_type,
 
 		assert(objNum > 0 || objNum < MAX_OBJECTS);
 
+		RT_ResourceHandle handle = mesh_handles[meshnumber];
+
         // Render mesh
-		RT_RaytraceMesh(mesh_handles[meshnumber], &mat, &old_poly_matrix[objNum]);
+		RT_RaytraceMesh(handle, &mat, &old_poly_matrix[objNum]);
 		old_poly_matrix[objNum] = mat;
 	}
 }
 
-void RT_DrawSubPolyModel(const RT_ResourceHandle submodel, const RT_Mat4* const submodel_transform, const RT_Mat4* const submodel_transform_prev)
+void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submodel_transform, const RT_Mat4* const submodel_transform_prev)
 {
 	if (RT_RESOURCE_HANDLE_VALID(submodel))
 	{
@@ -1006,6 +1000,16 @@ void RT_StartImGuiFrame(void)
 					igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.muzzleRadiusMod, 0, 4.f, "%.3f", 0);
 					igPopID();
 				}
+
+				igPopID();
+				igUnindent(0);
+			}
+			if (igCollapsingHeader_TreeNodeFlags("Miscellaneous", ImGuiTreeNodeFlags_None))
+			{
+				igPushID_Str("Miscellaneous");
+				igIndent(0);
+
+				igSliderInt("Flash screen multiplier", &screen_flash_mul, 1, 100, "%d", 0);
 
 				igPopID();
 				igUnindent(0);

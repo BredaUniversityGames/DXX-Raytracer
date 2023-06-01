@@ -185,7 +185,7 @@ void RT_InitAllBitmaps(void)
 	// the indirection of the Textures / ObjBitmaps / ObjBitmapPtrs arrays.
 	// - Daniel 01/03/2023
 	
-	for (uint16_t bm_index = 0; bm_index < MAX_BITMAP_FILES; bm_index++)
+	for (uint16_t bm_index = 1; bm_index < MAX_BITMAP_FILES; bm_index++)
 	{
 		grs_bitmap *bitmap = &GameBitmaps[bm_index];
 

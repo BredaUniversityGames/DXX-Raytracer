@@ -242,6 +242,22 @@ void RT_Event_Poll(ImGuiIO* io, SDL_Event* ev, int* clean_uniframe, int* idle)
 				ImGuiIO_AddFocusEvent(io, false);
 		} break;
 
+		case SDL_JOYBUTTONDOWN:
+		case SDL_JOYBUTTONUP:
+			joy_button_handler((SDL_JoyButtonEvent*)&event);
+			idle = 0;
+			break;
+		case SDL_JOYAXISMOTION:
+			if (joy_axis_handler((SDL_JoyAxisEvent*)&event))
+				idle = 0;
+			break;
+		case SDL_JOYHATMOTION:
+			joy_hat_handler((SDL_JoyHatEvent*)&event);
+			idle = 0;
+			break;
+		case SDL_JOYBALLMOTION:
+			break;
+
 		case SDL_QUIT: {
 			d_event qevent = { EVENT_QUIT };
 			call_default_handler(&qevent);

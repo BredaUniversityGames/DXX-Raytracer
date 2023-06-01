@@ -5,6 +5,8 @@
 #include <implot.h>
 #include <implot_internal.h>
 
+#include "Core/String.h"
+
 namespace RT
 {
 
@@ -283,6 +285,29 @@ namespace RT
 					}
 
 					ImPlot::EndPlot();
+				}
+
+				ImGui::Unindent(8.0f);
+			}
+
+			ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+			if (ImGui::CollapsingHeader("Memory Usage"))
+			{
+				ImGui::Indent(8.0f);
+
+				DXGI_QUERY_VIDEO_MEMORY_INFO info;
+				if (SUCCEEDED(g_d3d.dxgi_adapter4->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info)))
+				{
+					MemoryScope temp;
+
+					ImGui::Text("Current Usage: %s", RT_FormatHumanReadableBytes(temp, info.CurrentUsage));
+					ImGui::Text("Total Budget: %s", RT_FormatHumanReadableBytes(temp, info.Budget));
+					ImGui::Text("Current Reservation: %s", RT_FormatHumanReadableBytes(temp, info.CurrentReservation));
+					ImGui::Text("Available for Reservation: %s", RT_FormatHumanReadableBytes(temp, info.AvailableForReservation));
+				}
+				else
+				{
+					ImGui::Text("Failed to query video memory info");
 				}
 
 				ImGui::Unindent(8.0f);

@@ -41,25 +41,23 @@ using namespace Microsoft::WRL;
 #include <stdint.h>
 
 #include "Core/Common.h"
+#include "Core/Arena.h"
 
-inline void ExplainHRESULT(HRESULT hr)
+inline void ExplainHRESULT(HRESULT hr, char *title, char *file, int line)
 {
-    wchar_t *message = nullptr;
+    char *message = nullptr;
 
-    FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER| 
+    FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER| 
                    FORMAT_MESSAGE_FROM_SYSTEM|
                    FORMAT_MESSAGE_IGNORE_INSERTS,
                    NULL,
                    hr,
                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                   (wchar_t *)&message,
+                   (char *)&message,
                    0, NULL);
 
-    OutputDebugStringW(L"HRESULT FAILED:\n");
-    OutputDebugStringW(message);
-    OutputDebugStringW(L"\n");
-
-    LocalFree(message);
+    char *formatted = RT_ArenaPrintF(&g_thread_arena, "\nError code: 0x%X\n\n%s", (uint32_t)hr, message);
+    RT_FATAL_ERROR_(formatted, title, file, line);
 }
 
 #define DX_CALL(hr_) \
@@ -67,9 +65,7 @@ inline void ExplainHRESULT(HRESULT hr)
 		HRESULT dx_call_hr = hr_;         \
 		if (FAILED(dx_call_hr))           \
 		{                                 \
-			OutputDebugStringA("DX_CALL failed at " __FILE__ ":" RT_STRINGIFY(__LINE__) "\n"); \
-			ExplainHRESULT(dx_call_hr);   \
-			RT_ASSERT(!"HRESULT FAILED"); \
+			ExplainHRESULT(dx_call_hr, "Fatal DirectX Error", __FILE__, __LINE__); \
 		}                                 \
 	}                                     \
 	while (false)

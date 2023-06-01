@@ -7,6 +7,9 @@
 #define RT_ASSERT(x) assert(x)
 #define RT_INVALID_DEFAULT_CASE default: { RT_ASSERT(!"Invalid default case!"); } break;
 
+RT_API void RT_FATAL_ERROR_(const char *explanation, const char *title, const char *file, int line);
+#define RT_FATAL_ERROR(explanation) RT_FATAL_ERROR_(explanation, "Fatal Error", __FILE__, __LINE__)
+
 #define ALWAYS(x) (RT_ASSERT(x), x)
 #define NEVER(x)  (RT_ASSERT(!(x)), x)
 

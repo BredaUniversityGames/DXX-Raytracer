@@ -1,5 +1,3 @@
-#define _CRT_SECURE_NO_WARNINGS
-
 #define CGLTF_IMPLEMENTATION
 #pragma warning(push, 0)
 #include "../CGLTF/cgltf.h"

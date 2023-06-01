@@ -211,8 +211,7 @@ namespace
 		IDxcBlobEncoding *shader_text = nullptr;
 		DeferRelease(shader_text);
 
-		hr = g_d3d.dxc_utils->LoadFile(file_name, &codepage, &shader_text);
-        RT_ASSERT(SUCCEEDED(hr));
+		DX_CALL(g_d3d.dxc_utils->LoadFile(file_name, &codepage, &shader_text));
 
 		const wchar_t* arguments[] =
 		{
@@ -237,12 +236,11 @@ namespace
 			dxc_defines[i].Value = (LPCWSTR)defines[i];
 		}
 
-		hr = g_d3d.dxc_compiler->Compile(shader_text, file_name, entry_point, target_profile,
-										 arguments, RT_ARRAY_COUNT(arguments), 
-										 dxc_defines, num_defines,
-										 g_d3d.dxc_include_handler, &result);
+		DX_CALL(g_d3d.dxc_compiler->Compile(shader_text, file_name, entry_point, target_profile,
+											arguments, RT_ARRAY_COUNT(arguments),
+											dxc_defines, num_defines,
+											g_d3d.dxc_include_handler, &result));
 		DeferRelease(result);
-        RT_ASSERT(SUCCEEDED(hr));
 
 		result->GetStatus(&hr);
 
@@ -290,12 +288,11 @@ namespace
 		ID3DBlob* serialized_root_sig;
 		ID3DBlob* error;
 
-		HRESULT hr = D3D12SerializeVersionedRootSignature(&versioned_root_sig_desc, &serialized_root_sig, &error);
-		if (!SUCCEEDED(hr) || error)
+		DX_CALL(D3D12SerializeVersionedRootSignature(&versioned_root_sig_desc, &serialized_root_sig, &error));
+
+		if (error)
 		{
-			OutputDebugStringA(static_cast<const char*>(error->GetBufferPointer()));
-			SafeRelease(error);
-			RT_ASSERT(false);
+			RT_FATAL_ERROR((char*)error->GetBufferPointer());
 		}
 
 		SafeRelease(error);
@@ -374,7 +371,7 @@ namespace
 
         if (featureOptions.RaytracingTier < D3D12_RAYTRACING_TIER_1_0)
         {
-            RT_ASSERT(!"Raytracing is not supported by the hardware");
+			RT_FATAL_ERROR("Raytracing is not supported on this system.");
         }
 
 #if defined(_DEBUG)
@@ -1931,6 +1928,174 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 		g_d3d.billboard_quad = UploadMesh(params);
 	}
 
+	// ------------------------------------------------------------------
+	// Create "missing model" cube
+
+	{
+		RT_Vec3 positions[] = {
+			// Front face
+			{ -0.5, -0.5, 0.5,  },   // Vertex 0
+			{ 0.5, -0.5, 0.5,   },   // Vertex 1
+			{ 0.5, 0.5, 0.5,    },   // Vertex 2
+			{ -0.5, 0.5, 0.5,   },   // Vertex 3
+
+			// Back face
+			{ -0.5, -0.5, -0.5, },  // Vertex 4
+			{ 0.5, -0.5, -0.5,  },  // Vertex 5
+			{ 0.5, 0.5, -0.5,   },  // Vertex 6
+			{ -0.5, 0.5, -0.5,  },  // Vertex 7
+
+			// Left face
+			{ -0.5, -0.5, -0.5, },  // Vertex 8
+			{ -0.5, -0.5, 0.5,  },  // Vertex 9
+			{ -0.5, 0.5, 0.5,   },  // Vertex 10
+			{ -0.5, 0.5, -0.5,  },  // Vertex 11
+
+			// Right face
+			{ 0.5, -0.5, -0.5,  },  // Vertex 12
+			{ 0.5, -0.5, 0.5,   },  // Vertex 13
+			{ 0.5, 0.5, 0.5,    },  // Vertex 14
+			{ 0.5, 0.5, -0.5,   },  // Vertex 15
+
+			// Top face
+			{ -0.5, 0.5, 0.5,   },  // Vertex 16
+			{ 0.5, 0.5, 0.5,    },  // Vertex 17
+			{ 0.5, 0.5, -0.5,   },  // Vertex 18
+			{ -0.5, 0.5, -0.5,  },  // Vertex 19
+
+			// Bottom face
+			{ -0.5, -0.5, 0.5,  },  // Vertex 20
+			{ 0.5, -0.5, 0.5,   },  // Vertex 21
+			{ 0.5, -0.5, -0.5,  },  // Vertex 22
+			{ -0.5, -0.5, -0.5, },  // Vertex 23
+		};
+
+		RT_Vec3 normals[] = {
+			// Front face
+			{ 0.0, 0.0, 1.0, },     // Vertex 0
+			{ 0.0, 0.0, 1.0, },     // Vertex 1
+			{ 0.0, 0.0, 1.0, },     // Vertex 2
+			{ 0.0, 0.0, 1.0, },     // Vertex 3
+
+			// Back face
+			{ 0.0, 0.0, -1.0, },    // Vertex 4
+			{ 0.0, 0.0, -1.0, },    // Vertex 5
+			{ 0.0, 0.0, -1.0, },    // Vertex 6
+			{ 0.0, 0.0, -1.0, },    // Vertex 7
+
+			// Left face
+			{ -1.0, 0.0, 0.0, },   // Vertex 8
+			{ -1.0, 0.0, 0.0, },   // Vertex 9
+			{ -1.0, 0.0, 0.0, },   // Vertex 10
+			{ -1.0, 0.0, 0.0, },   // Vertex 11
+
+			// Right face
+			{ 1.0, 0.0, 0.0, },    // Vertex 12
+			{ 1.0, 0.0, 0.0, },    // Vertex 13
+			{ 1.0, 0.0, 0.0, },    // Vertex 14
+			{ 1.0, 0.0, 0.0, },    // Vertex 15
+
+			// Top face
+			{ 0.0, 1.0, 0.0, },    // Vertex 16
+			{ 0.0, 1.0, 0.0, },    // Vertex 17
+			{ 0.0, 1.0, 0.0, },    // Vertex 18
+			{ 0.0, 1.0, 0.0, },    // Vertex 19
+
+			// Bottom face
+			{ 0.0, -1.0, 0.0, },   // Vertex 20
+			{ 0.0, -1.0, 0.0, },   // Vertex 21
+			{ 0.0, -1.0, 0.0, },   // Vertex 22
+			{ 0.0, -1.0, 0.0, },   // Vertex 23
+		};
+
+		RT_Vec2 uvs[] = {
+			// Front face
+			{ 0.0, 0.0, },       // Vertex 0
+			{ 1.0, 0.0, },       // Vertex 1
+			{ 1.0, 1.0, },       // Vertex 2
+			{ 0.0, 1.0, },       // Vertex 3
+
+			// Back face
+			{ 1.0, 0.0, },       // Vertex 4
+			{ 0.0, 0.0, },       // Vertex 5
+			{ 0.0, 1.0, },       // Vertex 6
+			{ 1.0, 1.0, },       // Vertex 7
+
+			// Left face
+			{ 0.0, 0.0, },       // Vertex 8
+			{ 1.0, 0.0, },       // Vertex 9
+			{ 1.0, 1.0, },       // Vertex 10
+			{ 0.0, 1.0, },       // Vertex 11
+
+			// Right face
+			{ 1.0, 0.0, },       // Vertex 12
+			{ 0.0, 0.0, },       // Vertex 13
+			{ 0.0, 1.0, },       // Vertex 14
+			{ 1.0, 1.0, },       // Vertex 15
+
+			// Top face
+			{ 0.0, 1.0, },       // Vertex 16
+			{ 1.0, 1.0, },       // Vertex 17
+			{ 1.0, 0.0, },       // Vertex 18
+			{ 0.0, 0.0, },       // Vertex 19
+
+			// Bottom face
+			{ 1.0, 1.0, },       // Vertex 20
+			{ 0.0, 1.0, },       // Vertex 21
+			{ 0.0, 0.0, },       // Vertex 22
+			{ 1.0, 0.0, },       // Vertex 23
+		};
+
+		RT_Triangle triangles[12] = {};
+		for (size_t face_index = 0; face_index < RT_ARRAY_COUNT(triangles) / 2; face_index += 2)
+		{
+			size_t i = 4*face_index;
+
+			RT_Triangle *t0 = &triangles[face_index + 0];
+			RT_Triangle *t1 = &triangles[face_index + 1];
+
+			t0->pos0 = positions[i + 0];
+			t0->pos1 = positions[i + 1];
+			t0->pos2 = positions[i + 2];
+
+			t1->pos0 = positions[i + 0];
+			t1->pos1 = positions[i + 2];
+			t1->pos2 = positions[i + 3];
+
+			t0->normal0 = normals[i + 0];
+			t0->normal1 = normals[i + 1];
+			t0->normal2 = normals[i + 2];
+
+			t1->normal0 = normals[i + 0];
+			t1->normal1 = normals[i + 2];
+			t1->normal2 = normals[i + 3];
+
+			t0->uv0 = uvs[i + 0];
+			t0->uv1 = uvs[i + 1];
+			t0->uv2 = uvs[i + 2];
+
+			t1->uv0 = uvs[i + 0];
+			t1->uv1 = uvs[i + 2];
+			t1->uv2 = uvs[i + 3];
+
+			t0->color = RT_PackRGBA(RT_Vec4Make(1, 1, 1, 1));
+			t1->color = RT_PackRGBA(RT_Vec4Make(1, 1, 1, 1));
+
+			// 0 should be an unused, pink checkerboard material
+			t0->material_edge_index = RT_TRIANGLE_MATERIAL_INSTANCE_OVERRIDE;
+			t1->material_edge_index = RT_TRIANGLE_MATERIAL_INSTANCE_OVERRIDE;
+		}
+
+		RT_GenerateTangents(triangles, RT_ARRAY_COUNT(triangles));
+
+		RT_UploadMeshParams params = {};
+		params.name           = "Cube";
+		params.triangles      = triangles;
+		params.triangle_count = RT_ARRAY_COUNT(triangles);
+
+		g_d3d.cube = UploadMesh(params);
+	}
+
 	InitDearImGui();
 }
 
@@ -2230,6 +2395,7 @@ void RenderBackend::EndScene()
 			scene_cb->debug_flags = debug_flags;
 			scene_cb->lights_count = g_d3d.lights_count;
 			scene_cb->viewport_offset_y = g_d3d.viewport_offset_y;
+			scene_cb->screen_color_overlay = g_d3d.io.screen_overlay_color;
 
 			D3D12_CPU_DESCRIPTOR_HANDLE cbv = frame->descriptors.GetCPUDescriptor(D3D12GlobalDescriptors_CBV_GlobalConstantBuffer);
 
@@ -2242,9 +2408,7 @@ void RenderBackend::EndScene()
 		{
 			TweakVars* frame_tweakvars = frame->tweak_vars.As<TweakVars>();
 			memcpy(frame_tweakvars, &tweak_vars, sizeof(TweakVars));
-
 			D3D12_CPU_DESCRIPTOR_HANDLE cbv = frame->descriptors.GetCPUDescriptor(D3D12GlobalDescriptors_CBV_TweakVars);
-
 			D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc = {};
 			cbv_desc.BufferLocation = frame->tweak_vars.gpu;
 			cbv_desc.SizeInBytes = (UINT)frame->tweak_vars.size;
@@ -2609,7 +2773,11 @@ void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& render_mesh_params)
 	{
 		FrameData *frame = CurrentFrameData();
 		MeshResource* mesh_resource = g_mesh_slotmap.Find(render_mesh_params.mesh_handle);
-		RT_ASSERT(mesh_resource);
+
+		if (!mesh_resource)
+		{
+			mesh_resource = g_mesh_slotmap.Find(g_d3d.cube);
+		}
 
 		// ------------------------------------------------------------------
 		// Add mesh to hitgroup shader table
