@@ -59,6 +59,8 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #ifdef RT_DX12
 #include "Core/Arena.h"
+#include "Game/Lights.h"
+#include "RTmaterials.h"
 #include "RTgr.h"
 #include "dx12.h"
 #endif
@@ -171,10 +173,26 @@ void flash_frame()
 
 	//	flash_ang += fixmul(FLASH_CYCLE_RATE,FrameTime);
 	flash_ang += fixmul(flash_rate, FrameTime);
-
+	
 	fix_fastsincos(flash_ang, &flash_scale, NULL);
 
 	flash_scale = (flash_scale + f1_0) / 2;
+
+#ifdef RT_DX12
+	g_light_multiplier = f2fl(flash_scale);
+	g_pending_light_update = true;
+
+	//Creating different sincos for emissive
+	fix flash_scale_em = 0;
+	fix flash_offset = fl2f(0.90f);
+	fix_fastsincos(flash_ang + flash_offset, &flash_scale_em, NULL);
+	flash_scale_em = (flash_scale_em + f1_0) / 2;
+
+	int lightTexture = PCSharePig ? 774 : 997;
+	RT_Material* material = &g_rt_materials[lightTexture];
+	material->emissive_strength = f2fl(flash_scale_em) * 3.5f;
+	RT_UpdateMaterial(lightTexture, material);
+#endif
 }
 
 #ifdef OGL
@@ -1550,7 +1568,16 @@ void render_frame(fix eye_offset)
 		}
 		g3_set_view_matrix(&Viewer_eye, &Viewer->orient, fixdiv(Render_zoom, Zoom_factor));
 #else
+#ifdef RT_DX12
+		if (!g_rt_free_cam_info.g_free_cam_enabled) {
+			g3_set_view_matrix(&Viewer_eye, &Viewer->orient, Render_zoom);
+		}
+		else {
+			g3_set_view_matrix(&Viewer_eye, &Objects[g_rt_free_cam_info.g_free_cam_obj].orient, Render_zoom);
+		}
+#else
 		g3_set_view_matrix(&Viewer_eye, &Viewer->orient, Render_zoom);
+#endif
 #endif
 	}
 
@@ -1562,19 +1589,38 @@ void render_frame(fix eye_offset)
 	}
 
 #ifdef RT_DX12
-	g_cam.vfov = 60.0f;
-	RT_Vec3 player_pos = RT_Vec3FromVmsVector(Viewer->pos);
-	g_cam.position = player_pos;
-	//We just take the real view matrix and not the viewer's one. Since the view matrix gets properly used and changed.
-	g_cam.up = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.uvec));
-	g_cam.forward = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.fvec));
-	g_cam.right = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.rvec));
-	//We still keep this code incase anything breaks due to the camera.
-	//g_cam.up = RT_Vec3FromVmsVector(Viewer->orient.uvec);
-	//g_cam.forward = RT_Vec3FromVmsVector(Viewer->orient.fvec);
-	//g_cam.right = RT_Vec3FromVmsVector(Viewer->orient.rvec);
+
 	RT_SceneSettings scene_settings = { 0 };
-	scene_settings.camera = &g_cam;
+	RT_Vec3 object_pos;
+
+	if (!g_rt_free_cam_info.g_free_cam_enabled) {
+		//Setup main camera
+		object_pos = RT_Vec3FromVmsVector(Viewer->pos);
+		g_cam.position = object_pos;
+		
+		//We just take the real view matrix and not the viewer's one. Since the view matrix gets properly used and changed.
+		g_cam.up = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.uvec));
+		g_cam.forward = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.fvec));
+		g_cam.right = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.rvec));
+		
+		//We still keep this code incase anything breaks due to the camera.
+		//g_cam.up = RT_Vec3FromVmsVector(Viewer->orient.uvec);
+		//g_cam.forward = RT_Vec3FromVmsVector(Viewer->orient.fvec);
+		//g_cam.right = RT_Vec3FromVmsVector(Viewer->orient.rvec);
+
+		scene_settings.camera = &g_cam;
+	}
+	else {
+		//Setup free cam	
+		object_pos = RT_Vec3FromVmsVector(Objects[g_rt_free_cam_info.g_free_cam_obj].pos);
+		g_free_cam.position = object_pos;
+
+		g_free_cam.up = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.uvec));
+		g_free_cam.forward = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.fvec));
+		g_free_cam.right = RT_Vec3Normalize(RT_Vec3FromVmsVector(View_matrix.rvec));
+		scene_settings.camera = &g_free_cam;
+	}
+
 	scene_settings.render_width_override = Screen_3d_window.cv_bitmap.bm_w;
 	scene_settings.render_height_override = Screen_3d_window.cv_bitmap.bm_h;
 	RT_BeginScene(&scene_settings);
@@ -1586,8 +1632,8 @@ void render_frame(fix eye_offset)
 		float pos_offset_vert = -2.0f;
 		float skew_horz = 0.12f;
 		float skew_vert = 0.06f;
-		RT_Vec3  light_pos_left = RT_Vec3Add3(player_pos, RT_Vec3Muls(g_cam.right, -pos_offset_horz), RT_Vec3Muls(g_cam.up, pos_offset_vert));
-		RT_Vec3  light_pos_right = RT_Vec3Add3(player_pos, RT_Vec3Muls(g_cam.right, +pos_offset_horz), RT_Vec3Muls(g_cam.up, pos_offset_vert));
+		RT_Vec3  light_pos_left = RT_Vec3Add3(object_pos, RT_Vec3Muls(g_cam.right, -pos_offset_horz), RT_Vec3Muls(g_cam.up, pos_offset_vert));
+		RT_Vec3  light_pos_right = RT_Vec3Add3(object_pos, RT_Vec3Muls(g_cam.right, +pos_offset_horz), RT_Vec3Muls(g_cam.up, pos_offset_vert));
 		RT_Vec3  light_dir_left = RT_Vec3Normalize(RT_Vec3Add3(g_cam.forward, RT_Vec3Muls(g_cam.right, +0.1f), RT_Vec3Muls(g_cam.up, skew_vert)));
 		RT_Vec3  light_dir_right = RT_Vec3Normalize(RT_Vec3Add3(g_cam.forward, RT_Vec3Muls(g_cam.right, -0.1f), RT_Vec3Muls(g_cam.up, skew_vert)));
 		RT_Vec3  light_emission = RT_Vec3FromScalar(1.5f);
@@ -1600,12 +1646,15 @@ void render_frame(fix eye_offset)
 			light_spot_angle, light_spot_softness, 0.6f));
 	}
 
-	RT_RenderLevel(player_pos);
 	RT_RenderPolyModelViewer();
 	RT_RenderMaterialViewer();
 #endif //RT_DX12
 
 	render_mine(start_seg_num, eye_offset);
+
+#ifdef RT_DX12 // Separated because render_mine submits dynamic lights, which impacts how many level lights we want to send
+	RT_RenderLevel(object_pos);
+#endif
 
 	g3_end_frame();
 
@@ -1630,13 +1679,23 @@ void render_frame(fix eye_offset)
 			RT_Mat4 rot = RT_Mat4Fromvms_matrix(&Viewer->orient);
 			mat = RT_Mat4Mul(mat, RT_Mat4Fromvms_matrix(&Viewer->orient));
 
-			// Apply hard-coded offset for the cockpit - it's ok
-			mat = RT_Mat4Mul(mat, RT_Mat4FromYRotation(3.14159265f));
-			RT_Vec3 offset = { 0.0f, -0.5f, -2.25f };
-			mat = RT_Mat4Mul(mat, RT_Mat4FromTranslation(offset));
+			// Apply offset for the cockpit
+			if (Rear_view) {
+				mat = RT_Mat4Mul(mat, RT_Mat4FromXRotation(g_rt_cockpit_settings.back_cockpit_rotation.x));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromYRotation(g_rt_cockpit_settings.back_cockpit_rotation.y));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromZRotation(g_rt_cockpit_settings.back_cockpit_rotation.z));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromTranslation(g_rt_cockpit_settings.back_cockpit_offset));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromScale(g_rt_cockpit_settings.back_cockpit_scale));
+			} else {
+				mat = RT_Mat4Mul(mat, RT_Mat4FromXRotation(g_rt_cockpit_settings.front_cockpit_rotation.x));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromYRotation(g_rt_cockpit_settings.front_cockpit_rotation.y));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromZRotation(g_rt_cockpit_settings.front_cockpit_rotation.z));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromTranslation(g_rt_cockpit_settings.front_cockpit_offset));
+				mat = RT_Mat4Mul(mat, RT_Mat4FromScale(g_rt_cockpit_settings.front_cockpit_scale));
+			}
 
 			// Render mesh
-			RT_DrawGLTF(g_rt_cockpit_gltf, mat, prev_matrix);
+			RT_DrawGLTF(g_rt_cockpit_settings.cockpit_gltf, mat, prev_matrix);
 			prev_matrix = mat;
 		}
 	}

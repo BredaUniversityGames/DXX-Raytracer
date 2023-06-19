@@ -19,9 +19,8 @@ using namespace RT;
 
 // ------------------------------------------------------------------
 
-static uint16_t running_material_edge_index;
-static uint16_t running_material_index_index;
 static uint16_t running_material_index;
+static uint32_t running_image_index;
 
 template <typename T>
 static T *GetBufferViewPointer(const cgltf_buffer_view *buffer_view)
@@ -88,7 +87,7 @@ static int GLTFNodeIndex(const cgltf_data *gltf, const cgltf_node *node)
 
 // ------------------------------------------------------------------
 
-RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path)
+RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path, RT_MaterialOverride* material_override)
 {
 	MemoryScope temp;
 
@@ -205,7 +204,7 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path)
 					params.width  = (uint32_t)w;
 					params.height = (uint32_t)h;
 					params.pixels = (uint32_t *)pixels;
-					params.name   = image->uri;
+					params.name   = image->uri ? image->uri : RT_ArenaPrintF(image_temp, "GLTF Texture #%d", running_image_index++);
 					loaded_images[index]->handle = RT_UploadTexture(&params);
 				}
 
@@ -243,76 +242,72 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path)
 			size_t prim_triangle_count = primitive->indices->count / 3;
 
 			RT_Material material = {};
+			uint16_t material_index;
 
-			if (primitive->material->pbr_metallic_roughness.base_color_texture.texture)
-			{
-				LoadedImage *loaded_image = LoadImage(primitive->material->pbr_metallic_roughness.base_color_texture.texture->image, true, false);
-				if (loaded_image)
+			// note(lily): quick ugly hack to make the cockpit no longer cast shadows, but it works so there ya go
+			if (strcmp(path, "assets/cockpit_prototype.gltf") == 0) {
+				material.flags |= RT_MaterialFlag_NoCastingShadow;
+			}
+
+			if (material_override != nullptr && strcmp(primitive->material->name, material_override->name) == 0) {
+				material_index = material_override->material_index;
+			}
+			else {
+				if (primitive->material->pbr_metallic_roughness.base_color_texture.texture)
 				{
-					material.albedo_texture = loaded_image->handle;
+					LoadedImage* loaded_image = LoadImage(primitive->material->pbr_metallic_roughness.base_color_texture.texture->image, true, false);
+					if (loaded_image)
+					{
+						material.albedo_texture = loaded_image->handle;
+					}
 				}
-			}
 
-			if (primitive->material->normal_texture.texture)
-			{
-				LoadedImage *loaded_image = LoadImage(primitive->material->normal_texture.texture->image, false, false);
-				if (loaded_image)
+				if (primitive->material->normal_texture.texture)
 				{
-					material.normal_texture = loaded_image->handle;
+					LoadedImage* loaded_image = LoadImage(primitive->material->normal_texture.texture->image, false, false);
+					if (loaded_image)
+					{
+						material.normal_texture = loaded_image->handle;
+					}
 				}
-			}
 
-			if (primitive->material->pbr_metallic_roughness.metallic_roughness_texture.texture)
-			{
-				LoadedImage *loaded_image = LoadImage(primitive->material->pbr_metallic_roughness.metallic_roughness_texture.texture->image, false, true);
-				if (loaded_image)
+				if (primitive->material->pbr_metallic_roughness.metallic_roughness_texture.texture)
 				{
-					material.metalness_texture = loaded_image->handle;
-					material.roughness_texture = loaded_image->handle2;
+					LoadedImage* loaded_image = LoadImage(primitive->material->pbr_metallic_roughness.metallic_roughness_texture.texture->image, false, true);
+					if (loaded_image)
+					{
+						material.metalness_texture = loaded_image->handle;
+						material.roughness_texture = loaded_image->handle2;
+					}
 				}
-			}
-			material.metalness = primitive->material->pbr_metallic_roughness.metallic_factor;
-			material.roughness = primitive->material->pbr_metallic_roughness.roughness_factor;
+				material.metalness = primitive->material->pbr_metallic_roughness.metallic_factor;
+				material.roughness = primitive->material->pbr_metallic_roughness.roughness_factor;
 
-			if (primitive->material->emissive_texture.texture)
-			{
-				LoadedImage *loaded_image = LoadImage(primitive->material->emissive_texture.texture->image, true, false);
-				if (loaded_image)
+				if (primitive->material->emissive_texture.texture)
 				{
-					material.emissive_texture = loaded_image->handle;
+					LoadedImage* loaded_image = LoadImage(primitive->material->emissive_texture.texture->image, true, false);
+					if (loaded_image)
+					{
+						material.emissive_texture = loaded_image->handle;
+					}
 				}
-			}
-			material.emissive_color = RT_Vec3Make(primitive->material->emissive_factor[0],
-												  primitive->material->emissive_factor[1],
-												  primitive->material->emissive_factor[2]);
-			material.emissive_strength = 1.0f;
-			if (primitive->material->has_emissive_strength)
-			{
-				material.emissive_strength = primitive->material->emissive_strength.emissive_strength;
-			}
+				material.emissive_color = RT_Vec3Make(primitive->material->emissive_factor[0],
+					primitive->material->emissive_factor[1],
+					primitive->material->emissive_factor[2]);
+				material.emissive_strength = 1.0f;
+				if (primitive->material->has_emissive_strength)
+				{
+					material.emissive_strength = primitive->material->emissive_strength.emissive_strength;
+				}
+				material_index = RT_UpdateMaterial(RT_EXTRA_BITMAPS_START + running_material_index++, &material);
+			};
 
-			uint16_t material_index = RT_UpdateMaterial(running_material_index++, &material);
 			RT_ASSERT(material_index != UINT16_MAX);
-
-			// TODO(daniel): Fix this situation
-			// If this show up in a pull request, fire me out of a cannon!
-			RT_MaterialEdge *g_rt_material_edges   = RT_GetMaterialEdgesArray();
-			uint16_t        *g_rt_material_indices = RT_GetMaterialIndicesArray();
-
-			uint16_t material_index_index = running_material_index_index++;
-
-			// Store this material index for this material
-			g_rt_material_indices[material_index_index] = material_index;
-
-			uint16_t material_edge_index = running_material_edge_index++;
-
-			// Store the material edges for this set of triangles
-			g_rt_material_edges[material_edge_index] = { material_index_index, 0 };
 
 			// All the triangles point into the material edge
 			for (size_t triangle_index = 0; triangle_index < prim_triangle_count; triangle_index++)
 			{
-				prim_triangles[triangle_index].material_edge_index = material_edge_index;
+				prim_triangles[triangle_index].material_edge_index = material_index|RT_TRIANGLE_HOLDS_MATERIAL_INDEX;
 			}
 
 			size_t    index_count = primitive->indices->count;

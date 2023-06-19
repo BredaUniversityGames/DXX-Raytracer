@@ -111,6 +111,25 @@ typedef struct RT_ParseIntResult
 
 RT_API RT_ParseIntResult RT_ParseInt(RT_String string, int base);
 
+static inline bool RT_StringsAreEqual(RT_String a, RT_String b)
+{
+	bool result = a.count == b.count;
+
+	if (result)
+	{
+		for (size_t i = 0; i < a.count; i++)
+		{
+			if (a.bytes[i] != b.bytes[i])
+			{
+				result = false;
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
 static inline size_t RT_StringFindChar(RT_String string, char c)
 {
 	for (size_t i = 0; i < string.count; i++)
@@ -123,14 +142,38 @@ static inline size_t RT_StringFindChar(RT_String string, char c)
 	return RT_String_NPOS;
 }
 
+static inline bool RT_IsWhitespace(char c)
+{
+	return (c == ' '  ||
+			c == '\t' ||
+			c == '\n' ||
+			c == '\r');
+}
+
+static inline bool RT_IsNewline(char c)
+{
+	return (c == '\n' || c == '\r');
+}
+
 static inline size_t RT_StringFindFirstNonWhitespace(RT_String string)
 {
 	for (size_t i = 0; i < string.count; i++)
 	{
-		if (string.bytes[i] != ' ' &&
-			string.bytes[i] != '\t' &&
-			string.bytes[i] != '\n' &&
-			string.bytes[i] != '\r')
+		if (!RT_IsWhitespace(string.bytes[i]))
+		{
+			return i;
+		}
+	}
+	return RT_String_NPOS;
+}
+
+static inline size_t RT_StringFindLastNonWhitespace(RT_String string)
+{
+	for (size_t j = 0; j < string.count; j++)
+	{
+		size_t i = string.count - j - 1; // unsigned reverse for loops :))
+
+		if (!RT_IsWhitespace(string.bytes[i]))
 		{
 			return i;
 		}
@@ -145,5 +188,101 @@ static inline RT_String RT_StringAdvance(RT_String string, size_t advance)
 
 	string.bytes += advance;
 	string.count -= advance;
+	return string;
+}
+
+static inline RT_String RT_StringSplitLine(RT_String string, RT_String *line)
+{
+	char *start = string.bytes;
+	char *end   = string.bytes + string.count;
+	char *at    = start;
+
+	while (at < end && !RT_IsNewline(*at))
+	{
+		at++;
+	}
+
+	if (line)
+	{
+		line->bytes = start;
+		line->count = at - start;
+	}
+
+	while (at < end && RT_IsNewline(*at))
+	{
+		at++;
+	}
+
+	RT_String result;
+	result.bytes = at;
+	result.count = end - at;
+	return result;
+}
+
+// Returns string to the right of the char as a return value, returns left side through lhs parameter
+static inline RT_String RT_StringSplitAroundChar(RT_String string, char c, RT_String *lhs)
+{
+	RT_String result = {0};
+
+	size_t pos = RT_StringFindChar(string, c);
+
+	if (pos != RT_String_NPOS)
+	{
+		if (lhs)
+		{
+			lhs->bytes = string.bytes;
+			lhs->count = pos;
+		}
+		result = RT_StringAdvance(string, pos + 1);
+	}
+	else
+	{
+		if (lhs)
+		{
+			*lhs = string;
+		}
+	}
+
+	return result;
+}
+
+// If the string is in the form "This is a string", it removes the quotes: This is a string
+static inline RT_String RT_StringUnquoteString(RT_String string)
+{
+	if (string.count >= 2)
+	{
+		if (string.bytes[0] == '"' &&
+			string.bytes[string.count - 1] == '"')
+		{
+			string.bytes += 1;
+			string.count -= 2;
+		}
+	}
+	return string;
+}
+
+static inline RT_String RT_StringTrimLeft(RT_String string)
+{
+	while (string.count > 0 && RT_IsWhitespace(string.bytes[0]))
+	{
+		string.bytes++;
+		string.count--;
+	}
+	return string;
+}
+
+static inline RT_String RT_StringTrimRight(RT_String string)
+{
+	while (string.count > 0 && RT_IsWhitespace(string.bytes[string.count - 1]))
+	{
+		string.count--;
+	}
+	return string;
+}
+
+static inline RT_String RT_StringTrim(RT_String string)
+{
+	string = RT_StringTrimLeft(string);
+	string = RT_StringTrimRight(string);
 	return string;
 }

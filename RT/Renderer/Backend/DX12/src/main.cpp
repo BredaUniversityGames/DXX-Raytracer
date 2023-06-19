@@ -633,12 +633,12 @@ int main(int argc, char **argv)
     // ------------------------------------------------------------------
     // Load test meshes
 
-    RT_GLTFNode *duck   = RT_LoadGLTF(&renderer_arena, "assets/models/duck/Duck.gltf");
-    RT_GLTFNode *helmet = RT_LoadGLTF(&renderer_arena, "assets/models/helmet/DamagedHelmet.gltf");
-    // RT_GLTFNode *sponza = RT_LoadGLTF(&renderer_arena, "assets/models/NewSponza/NewSponza_Main_glTF_002.gltf");
-    RT_GLTFNode *sponza = RT_LoadGLTF(&renderer_arena, "assets/models/sponza/Sponza.gltf");
-    RT_GLTFNode *chess = RT_LoadGLTF(&renderer_arena, "assets/models/ABeautifulGame/ABeautifulGame.gltf");
-    RT_GLTFNode *metal_rough_spheres = RT_LoadGLTF(&renderer_arena, "assets/models/MetalRoughSpheres/MetalRoughSpheres.gltf");
+    RT_GLTFNode *duck   = RT_LoadGLTF(&renderer_arena, "assets/models/duck/Duck.gltf", nullptr);
+    RT_GLTFNode *helmet = RT_LoadGLTF(&renderer_arena, "assets/models/helmet/DamagedHelmet.gltf", nullptr);
+    // RT_GLTFNode *sponza = RT_LoadGLTF(&renderer_arena, "assets/models/NewSponza/NewSponza_Main_glTF_002.gltf", nullptr);
+    RT_GLTFNode *sponza = RT_LoadGLTF(&renderer_arena, "assets/models/sponza/Sponza.gltf", nullptr);
+    RT_GLTFNode *chess = RT_LoadGLTF(&renderer_arena, "assets/models/ABeautifulGame/ABeautifulGame.gltf", nullptr);
+    RT_GLTFNode *metal_rough_spheres = RT_LoadGLTF(&renderer_arena, "assets/models/MetalRoughSpheres/MetalRoughSpheres.gltf", nullptr);
 
     RT_TrackedMesh sponza_duck = RT_AddTrackedMesh(duck);
     RT_TrackedMesh beam_duck   = RT_AddTrackedMesh(duck);

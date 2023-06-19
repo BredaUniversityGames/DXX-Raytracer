@@ -1,2 +1,4 @@
-blackbody = 1
 emissive_strength = 3.500000
+albedo_texture    = arw01_basecolor.png
+metallic_texture  = arw01_metallic.png
+roughness_texture = arw01_roughness.png

@@ -509,8 +509,12 @@ void game_render_frame_mono(int flip)
 	if (Newdemo_state == ND_STATE_PLAYBACK)
 		Game_mode = Newdemo_game_mode;
 
-	if (PlayerCfg.CockpitMode[1]==CM_FULL_COCKPIT || PlayerCfg.CockpitMode[1]==CM_STATUS_BAR)
+	if (PlayerCfg.CockpitMode[1] == CM_FULL_COCKPIT || PlayerCfg.CockpitMode[1] == CM_STATUS_BAR)
 		render_gauges();
+#ifdef RT_DX12
+	if (PlayerCfg.CockpitMode[1] == CM_MODEL_3D)
+		render_gauges();
+#endif
 
 	if (Newdemo_state == ND_STATE_PLAYBACK)
 		Game_mode = GM_NORMAL | (Game_mode & GM_OBSERVER);
@@ -562,6 +566,13 @@ int last_drawn_cockpit = -1;
 extern void ogl_loadbmtexture(grs_bitmap *bm);
 
 // This actually renders the new cockpit onto the screen.
+#ifdef OGL
+#define UBITMAPM ogl_ubitmapm_cs
+#elif RT_DX12
+#define UBITMAPM dx12_ubitmapm_cs
+#else
+#define UBITMAPM(x, y, dw, dh, bm, c, scale) gr_ubitmapm(x, y, bm)
+#endif
 void update_cockpits()
 {
 	grs_bitmap *bm;
@@ -571,35 +582,17 @@ void update_cockpits()
 	switch( PlayerCfg.CockpitMode[1] )	{
 		case CM_FULL_COCKPIT:
 			gr_set_current_canvas(NULL);
-#ifdef OGL
-			ogl_ubitmapm_cs (0, 0, -1, grd_curcanv->cv_bitmap.bm_h, bm,255, F1_0);
-#elif RT_DX12
-			dx12_ubitmapm_cs(0, 0, -1, grd_curcanv->cv_bitmap.bm_h, bm, 255, F1_0);
-#else
-			gr_ubitmapm(0,0, bm);
-#endif
+			UBITMAPM(0, 0, -1, grd_curcanv->cv_bitmap.bm_h, bm,255, F1_0);
 			break;
 		case CM_REAR_VIEW:
 			gr_set_current_canvas(NULL);
-#ifdef OGL
-			ogl_ubitmapm_cs (0, 0, -1, grd_curcanv->cv_bitmap.bm_h, bm,255, F1_0);
-#elif RT_DX12
-			dx12_ubitmapm_cs(0, 0, -1, grd_curcanv->cv_bitmap.bm_h, bm, 255, F1_0);
-#else
-			gr_ubitmapm(0,0, bm);
-#endif
+			UBITMAPM(0, 0, -1, grd_curcanv->cv_bitmap.bm_h, bm,255, F1_0);
 			break;
 		case CM_FULL_SCREEN:
 			break;
 		case CM_STATUS_BAR:
 			gr_set_current_canvas(NULL);
-#ifdef OGL
-			ogl_ubitmapm_cs (0, (HIRESMODE?(SHEIGHT*2)/2.6:(SHEIGHT*2)/2.72), -1, ((int) ((double) (bm->bm_h) * (HIRESMODE?(double)SHEIGHT/480:(double)SHEIGHT/200) + 0.5)), bm,255, F1_0);
-#elif RT_DX12
-			dx12_ubitmapm_cs(0, (HIRESMODE ? (SHEIGHT * 2) / 2.6 : (SHEIGHT * 2) / 2.72), -1, ((int)((double)(bm->bm_h) * (HIRESMODE ? (double)SHEIGHT / 480 : (double)SHEIGHT / 200) + 0.5)), bm, 255, F1_0);
-#else
-			gr_ubitmapm(0,SHEIGHT-bm->bm_h,bm);
-#endif
+			UBITMAPM(0, (HIRESMODE?(SHEIGHT*2)/2.6:(SHEIGHT*2)/2.72), -1, ((int) ((double) (bm->bm_h) * (HIRESMODE?(double)SHEIGHT/480:(double)SHEIGHT/200) + 0.5)), bm,255, F1_0);
 			break;
 		case CM_LETTERBOX:
 			gr_set_current_canvas(NULL);

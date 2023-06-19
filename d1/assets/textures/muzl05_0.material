@@ -1,2 +1,3 @@
 blackbody = 1
+no_casting_shadow = 1
 emissive_strength = 3.500000

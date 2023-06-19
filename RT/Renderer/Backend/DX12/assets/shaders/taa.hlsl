@@ -33,9 +33,9 @@ groupshared float2 shared_motion[SHARED_Y][SHARED_X];
 
 void Preload(uint2 shared_pos, uint2 global_pos)
 {
-	shared_depth [shared_pos.y][shared_pos.x] = img_depth		[global_pos].x;
-	shared_color [shared_pos.y][shared_pos.x] = img_color       [global_pos].rgb;
-	shared_motion[shared_pos.y][shared_pos.x] = img_motion      [global_pos].xy;
+	shared_depth [shared_pos.y][shared_pos.x] = img_depth [global_pos].x;
+	shared_color [shared_pos.y][shared_pos.x] = img_color [global_pos].rgb;
+	shared_motion[shared_pos.y][shared_pos.x] = img_motion[global_pos].xy;
 }
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
@@ -47,6 +47,8 @@ void TemporalAntiAliasingCS(COMPUTE_ARGS)
 	PRELOAD_INTO_SHARED
 
 	//------------------------------------------------------------------------
+
+	EARLY_OUT
 
 	float2 dim = g_global_cb.render_dim;
 

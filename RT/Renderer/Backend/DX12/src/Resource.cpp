@@ -50,7 +50,7 @@ namespace RT
 		DX_CALL(g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &resource_desc, initial_state, nullptr, IID_PPV_ARGS(&buffer)));
 
 		buffer->SetName(name);
-		g_d3d.resource_tracker.Track(RT_RESOURCE_TRACKER_FWD_ARGS buffer, initial_state);
+		g_d3d.resource_tracker.TrackObject(RT_RESOURCE_TRACKER_FWD_ARGS buffer, initial_state);
 
 		return buffer;
 	}
@@ -168,7 +168,22 @@ namespace RT
 	// -------------------------------------------------------------------------
 	// Textures
 
-	ID3D12Resource* CreateTexture(const wchar_t* name, DXGI_FORMAT format, D3D12_RESOURCE_FLAGS flags, size_t width, uint32_t height, uint16_t mips, D3D12_CLEAR_VALUE* clear_value)
+	ID3D12Resource* CreateTexture(RT_RESOURCE_TRACKER_DEBUG_PARAMS const wchar_t* name, const D3D12_RESOURCE_DESC* resource_desc, D3D12_CLEAR_VALUE* clear_value)
+	{
+		D3D12_HEAP_PROPERTIES heap_props = {};
+		heap_props.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+		ID3D12Resource* texture;
+		g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, resource_desc,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, clear_value, IID_PPV_ARGS(&texture));
+
+		texture->SetName(name);
+		g_d3d.resource_tracker.TrackObject(RT_RESOURCE_TRACKER_FWD_ARGS texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+		return texture;
+	}
+
+	ID3D12Resource* CreateTexture(RT_RESOURCE_TRACKER_DEBUG_PARAMS const wchar_t* name, DXGI_FORMAT format, D3D12_RESOURCE_FLAGS flags, size_t width, uint32_t height, D3D12_RESOURCE_STATES state, uint16_t mips, D3D12_CLEAR_VALUE* clear_value)
 	{
 		D3D12_HEAP_PROPERTIES heap_props = {};
 		heap_props.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -188,10 +203,10 @@ namespace RT
 
 		ID3D12Resource* texture;
 		g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &resource_desc,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, clear_value, IID_PPV_ARGS(&texture));
+			state, clear_value, IID_PPV_ARGS(&texture));
 
 		texture->SetName(name);
-		RT_TRACK_RESOURCE(texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		g_d3d.resource_tracker.TrackObject(RT_RESOURCE_TRACKER_FWD_ARGS texture, state);
 
 		return texture;
 	}
@@ -256,7 +271,7 @@ namespace RT
 		srv_desc.Format = format;
 		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srv_desc.Texture2D.MipLevels = mips;
+		srv_desc.Texture2D.MipLevels = mips == UINT32_MAX ? resource->GetDesc().MipLevels : mips;
 		srv_desc.Texture2D.MostDetailedMip = 0;
 		srv_desc.Texture2D.PlaneSlice = 0;
 		srv_desc.Texture2D.ResourceMinLODClamp = 0;

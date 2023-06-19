@@ -46,9 +46,17 @@ void dx12_end_frame()
 {
 	// Flush rasterizer
 	RT_RasterRender();
-
 	// Reset viewport to default
 	RT_RasterSetViewport(0.0f, 0.0f, grd_curscreen->sc_w, grd_curscreen->sc_h);
+}
+
+void dx12_set_render_target(RT_ResourceHandle texture)
+{
+	// Flush rasterizer
+	RT_RasterRender();
+
+	// Set the render target texture for the next raster commands
+	RT_RasterSetRenderTarget(texture);
 }
 
 void dx12_init_texture(grs_bitmap* bm)
@@ -561,7 +569,10 @@ void dx12_ulinec(int left, int top, int right, int bot, int c)
 		{ .pos = RT_Vec3Make(xf, yf, 0.0f), .color = col },
 	};
 
-	RT_RasterLines(vertices, 2);
+	//if (RT_RESOURCE_HANDLE_VALID(hud_render_target))
+	//	RT_RasterLinesToHUD(hud_render_target, vertices, 2);
+    //else
+	    RT_RasterLines(vertices, 2);
 }
 
 // Use: render.c, terrain.c, automap.c, meddraw.c, draw.c
@@ -591,6 +602,7 @@ bool g3_draw_line(g3s_point* p0, g3s_point* p1)
 	};
 
 	RT_RasterLines(vertices, 2);
+
 	return 1;
 }
 
@@ -858,6 +870,11 @@ int dx12_internal_string(int x, int y, const char* s)
 
 uint32_t* dx12_load_bitmap_pixel_data(RT_Arena* arena, grs_bitmap* bitmap)
 {
+	if (bitmap->bm_type == BM_RGBA8)
+	{
+		return bitmap->bm_data;
+	}
+
 	if (bitmap->bm_flags & BM_FLAG_RLE)
 	{
 		bitmap = rle_expand_texture(bitmap);
@@ -934,7 +951,7 @@ bool dx12_ubitmapm_cs(int x, int y, int dw, int dh, grs_bitmap* bm, int c, int s
 		dx12_loadbmtexture_f(bm, GameCfg.TexFilt);
 	}
 
-	float xo, yo, xf, yf, u1, u2, v1, v2, color_r, color_g, color_b, h;
+	float xo, yo, xf, yf, u1, u2, v1, v2, color_r, color_g, color_b, color_a, h;
 
 	x += grd_curcanv->cv_bitmap.bm_x;
 	y += grd_curcanv->cv_bitmap.bm_y;
@@ -994,7 +1011,16 @@ bool dx12_ubitmapm_cs(int x, int y, int dw, int dh, grs_bitmap* bm, int c, int s
 		color_b = CPAL2Tb(c);
 	}
 
-	RT_Vec4 col = { color_r, color_g, color_b, 1.0f };
+	//NOTE (sam)
+	//the normal fade calculation does not seem to work here. The calculation is on the bottom of the comments..
+	//so I just check that if the fade level is 0 then do not fade. Seems to be consistent with the code here.
+	//color_a = 1.0f - (float)grd_curcanv->cv_fade_level / ((float)GR_FADE_LEVELS - 1.0)
+	if (grd_curcanv->cv_fade_level >= GR_FADE_OFF || grd_curcanv->cv_fade_level == 0)
+		color_a = 1.0;
+	else
+		color_a = (float)grd_curcanv->cv_fade_level / ((float)GR_FADE_LEVELS - 1.0);
+	
+	RT_Vec4 col = { color_r, color_g, color_b, color_a };
 	RT_RasterTriVertex vertices[6] = {
 		{.pos = { xf, yo, 0.0f }, .uv = { u2, v1 }, .color = col, .texture_index = 0 },
 		{.pos = { xf, yf, 0.0f }, .uv = { u2, v2 }, .color = col, .texture_index = 0 },

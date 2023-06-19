@@ -14,7 +14,13 @@ void TraceOcclusionRay(RayDesc ray, inout OcclusionRayPayload payload)
 [shader("anyhit")]
 void OcclusionAnyhit(inout OcclusionRayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
-    if (IsHitTransparent(InstanceIndex(), PrimitiveIndex(), attr.barycentrics))
+    Material hit_material;
+    if (IsHitTransparent(InstanceIndex(), PrimitiveIndex(), attr.barycentrics, hit_material))
+    {
+        IgnoreHit();
+    }
+
+    if (hit_material.flags & RT_MaterialFlag_NoCastingShadow)
     {
         IgnoreHit();
     }

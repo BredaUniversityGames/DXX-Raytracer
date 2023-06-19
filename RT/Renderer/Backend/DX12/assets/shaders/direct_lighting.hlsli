@@ -153,7 +153,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 	if (HasHitGeometry(IN.vis_prim))
 	{
 		float3 unpacked_normal = DecodeNormalOctahedron(IN.normal);
-		float3 geo_world_p = ReconstructWorldPosFromGBuffer(co);
+		float3 geo_world_p = IN.world_p; // ReconstructWorldPosFromGBuffer(co);
 
 		if (!(all(material_desc.albedo == 0) && material_desc.metallic == 1))
 		{
@@ -176,7 +176,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 
 			if (tweak.ris && (!is_indirect || tweak.ris_indirect))
 			{
-				if (tweak.ris == 1)
+				if (tweak.ris == 2)
 				{
 					for (uint light_index = 0; light_index < lights_count; light_index++)
 					{
@@ -198,7 +198,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 
 					W = r.w_y > 0.001 ? rcp(r.w_y)*r.w_sum : 0.0;
 				}
-				else if (tweak.ris == 2)
+				else if (tweak.ris == 1)
 				{
 					for (uint sample_index = 0; sample_index < min(tweak.ris_spp, lights_count); sample_index++)
 					{
@@ -234,10 +234,10 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 			
 			float ndotl = max(0, dot(unpacked_normal, s.L));
 
-			if (any(s.e > 0.001f) && ndotl > 0.001f)
+			if (any(s.e > 0.001) && ndotl > 0.001)
 			{
 				RayDesc occlusion_ray;
-				occlusion_ray.Origin = geo_world_p + 0.01f * unpacked_normal;
+				occlusion_ray.Origin = geo_world_p + 0.01 * unpacked_normal;
 				occlusion_ray.Direction = s.L;
 				occlusion_ray.TMin = RT_RAY_T_MIN;
 				occlusion_ray.TMax = s.L_dist;
@@ -252,8 +252,16 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 				float3 brdf_diffuse, brdf_specular;
 				EvaluateBRDF(-IN.view_dir, unpacked_normal, s.L, material_desc, brdf_diffuse, brdf_specular);
 
+				float direct_light_specular_weight = 1.0f;
+				if (!is_indirect)
+				{
+					direct_light_specular_weight = smoothstep(tweak.direct_specular_threshold - 0.1,
+															  tweak.direct_specular_threshold + 0.1,
+															  material_desc.roughness);
+				}
+
 				OUT.direct_lighting += c * brdf_diffuse;
-				OUT.direct_specular += c * brdf_specular;
+				OUT.direct_specular += c * brdf_specular * direct_light_specular_weight;
 			}
 		}
 	}

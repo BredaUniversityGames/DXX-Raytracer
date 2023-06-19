@@ -6,6 +6,7 @@
 // -----------------------------------------------------------
 // Misc.
 
+
 float2 BrownConradyDistortion(float2 uv, float amount, float width_over_height)
 {
     uv.y /= width_over_height;
@@ -37,49 +38,9 @@ void PrimaryRaygen()
     uint2 dispatch_idx = DispatchRaysIndex().xy;
     uint2 dispatch_dim = DispatchRaysDimensions().xy;
 
-    // Calculate UV
-    float2 dispatch_uv = (dispatch_idx + 0.5) / dispatch_dim;
-    dispatch_uv.y      = 1.0f - dispatch_uv.y;
-    dispatch_uv.y     -= g_global_cb.viewport_offset_y;
-
-    // Apply TAA jitter if TAA is enabled or reference mode is enabled
-    if (tweak.reference_mode || tweak.taa_enabled)
-    {
-        dispatch_uv += GetTAAJitter(dispatch_idx);
-    }
-
-    float3 curr_view_d  = Unproject(g_global_cb.proj_inv, dispatch_uv, 1);
-    float3 curr_world_d = mul(g_global_cb.view_inv, float4(curr_view_d, 0)).xyz;
-    float3 curr_world_p = mul(g_global_cb.view_inv, float4(0, 0, 0, 1)).xyz;
-
-    float3 world_d = curr_world_d;
-    float3 world_p = curr_world_p;
-
-#if 0
-    // Ray jitter based motion blur is too harmful to temporal resampling
-    if (tweak.motion_blur)
-    {
-        // Project current view direction and origin to previous frame's view direction and origin
-        float3 prev_view_d  = Unproject(g_global_cb.prev_proj_inv, dispatch_uv, 1);
-        float3 prev_world_d = mul(g_global_cb.prev_view_inv, float4(prev_view_d, 0)).xyz;
-        float3 prev_world_p = mul(g_global_cb.prev_view_inv, float4(0, 0, 0, 1)).xyz;
-
-        // Lerp between previous frame's and current frame's view direction and origin, also apply motion blur jitter
-        float motion_blur_jitter = RandomSample(dispatch_idx, Random_MotionBlur);
-        world_d = lerp(prev_world_d, curr_world_d, motion_blur_jitter);
-        world_p = lerp(prev_world_p, curr_world_p, motion_blur_jitter);
-    }
-#endif
-
-    // Set up geometry input for primary ray trace
-    PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
-    RayDesc ray_desc = (RayDesc)0;
-    ray_desc.Origin = world_p;
-    ray_desc.Direction = world_d;
-    ray_desc.TMin = RT_RAY_T_MIN;
-    ray_desc.TMax = RT_RAY_T_MAX;
-
     // Trace the primary ray
+    RayDesc ray_desc = GetRayDesc(dispatch_idx, dispatch_dim);
+    PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
     TracePrimaryRay(ray_desc, ray_payload);
 
     // Set up geometry output from primary ray trace and set non-zero defaults where necessary
@@ -170,7 +131,8 @@ void PrimaryClosesthit(inout PrimaryRayPayload payload, in BuiltInTriangleInters
 [shader("anyhit")]
 void PrimaryAnyhit(inout PrimaryRayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
-    if (IsHitTransparent(InstanceIndex(), PrimitiveIndex(), attr.barycentrics))
+    Material hit_material;
+    if (IsHitTransparent(InstanceIndex(), PrimitiveIndex(), attr.barycentrics, hit_material))
     {
         IgnoreHit();
     }

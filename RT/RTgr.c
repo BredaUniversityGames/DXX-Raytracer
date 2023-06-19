@@ -17,9 +17,12 @@
 #include "render.h"
 #include "gamefont.h"
 #include "piggy.h"
+#include "playsave.h"
 
 #include "Core/Arena.h"
 #include "Core/MiniMath.h"
+#include "Core/Config.h"
+#include "Core/String.h"
 
 #include <SDL/SDL.h>
 #include <SDL/SDL_syswm.h>
@@ -41,13 +44,29 @@
 #include "Game/Lights.h"
 
 #include "vers_id.h"
+#include "Core/Config.h"
+#include "Core/String.h"
 
 #pragma warning(error: 4431) // default-int (variables)
 #pragma warning(error: 4013) // default-int (function returns)
 
 int sdl_video_flags = 0;
 bool g_rt_enable_debug_menu;
+
+CockpitSettings g_rt_cockpit_settings = {
+	.front_cockpit_rotation = {0.247f, -RT_PI32, 0.000f},
+	.front_cockpit_offset = {0.000f, -0.033f, -2.411f},
+	.front_cockpit_scale = {1.182f, 1.000f, 1.000f},
+	.back_cockpit_rotation = {-0.159f, -RT_PI32, 0.000f},
+	.back_cockpit_offset = {0.000f, -0.760f, -2.488f},
+	.back_cockpit_scale = {1.000f, 1.000f, 1.000f},
+};
 RT_GLTFNode* g_rt_cockpit_gltf;
+RT_FreeCamInfo g_rt_free_cam_info = { 0 };
+int light_culling_heuristic = 1;
+int max_rec_depth = 32;
+float max_distance = 600;
+float max_seg_distance = 500;
 
 uint64_t g_rt_frame_index;
 
@@ -285,6 +304,47 @@ void gr_palette_step_up(int r, int g, int b)
 	io->screen_overlay_color = screen_flash_color;
 }
 
+void RT_UpdateMaterialEdges(void)
+{
+	RT_MaterialEdge* g_rt_material_edges = RT_GetMaterialEdgesArray();
+
+	for (int segment_index = 0; segment_index < Num_segments; segment_index++)
+	{
+		segment* seg = &Segments[segment_index];
+
+		for (int side_index = 0; side_index < MAX_SIDES_PER_SEGMENT; side_index++)
+		{
+			side* sd = &seg->sides[side_index];
+
+			int absolute_side_index = MAX_SIDES_PER_SEGMENT * segment_index + side_index;
+
+			RT_MaterialEdge* side_edge = &g_rt_material_edges[absolute_side_index];
+			side_edge->mat1 = sd->tmap_num;
+			side_edge->mat2 = sd->tmap_num2;
+		}
+	}
+}
+
+void RT_UpdateMaterialIndices(void)
+{
+	uint16_t* g_rt_material_indices = RT_GetMaterialIndicesArray();
+
+	for (int texture_index = 0; texture_index < MAX_TEXTURES; texture_index++)
+	{
+		g_rt_material_indices[texture_index] = Textures[texture_index].index;
+	}
+
+	for (int texture_index = 0; texture_index < MAX_OBJ_BITMAPS; texture_index++)
+	{
+		g_rt_material_indices[texture_index + MAX_TEXTURES] = ObjBitmaps[texture_index].index;
+	}
+
+	// The way this system was set up is really not the best, this is my hack to easily
+	// use these special built in materials in other code.
+	g_rt_material_indices[RT_MATERIAL_FLAT_WHITE] = RT_MATERIAL_FLAT_WHITE;
+	g_rt_material_indices[RT_MATERIAL_EMISSIVE_WHITE] = RT_MATERIAL_EMISSIVE_WHITE;
+}
+
 void gr_flip(void)
 {
 	//flip
@@ -340,6 +400,11 @@ int gr_init(int mode)
 	if (GameArg.SysNoBorders)
 		sdl_video_flags |= SDL_NOFRAME;
 
+	g_rt_free_cam_info.g_free_cam_enabled = false;
+	g_rt_free_cam_info.g_free_cam_clipping_enabled = false;
+	g_rt_free_cam_info.g_free_cam_obj = 0;
+	g_rt_free_cam_info.g_old_cockpit = 0;
+
 	MALLOC(grd_curscreen, grs_screen, 1);
 	memset(grd_curscreen, 0, sizeof(grs_screen));
 	grd_curscreen->sc_canvas.cv_bitmap.bm_data = NULL;
@@ -379,10 +444,14 @@ int gr_init(int mode)
 	igInitWin32(info.window);
 	RT_RendererInit(&initParams);
 
+	float fov;
+	RT_ConfigReadFloat(RT_GetRendererIO()->config, RT_StringLiteral("fov"), &fov);
+	g_cam.vfov = g_free_cam.vfov = fov;
+
 	return 0;
 }
 
-void RT_VertexFixToFloat_Fan(RT_TriangleBuffer *buf, int nv, g3s_point** pointlist, uint16_t texture_id, uint32_t triangle_color)
+void RT_VertexFixToFloat_Fan(RT_TriangleBuffer *buf, int nv, g3s_point** pointlist, uint32_t texture_id, uint32_t triangle_color)
 {
 	RT_Triangle first_triangle = {0};
 
@@ -509,7 +578,7 @@ static void RT_GetPolyData(RT_TriangleBuffer *buf,
 				// RGBA!
 				uint32_t color_packed = (r << 0)|(g << 8)|(b << 16)|(a << 24);
 
-				int material_index = RT_MATERIAL_FLAT_WHITE|RT_TRIANGLE_HOLDS_MATERIAL_EDGE;
+				uint32_t material_index = RT_MATERIAL_FLAT_WHITE|RT_TRIANGLE_HOLDS_MATERIAL_EDGE;
 
 				// wow. good code.
 
@@ -591,7 +660,7 @@ static void RT_GetPolyData(RT_TriangleBuffer *buf,
 				// NOTE(daniel): For poly objects, RT_TRIANGLE_HOLDS_MATERIAL_EDGE is or'd into the material index
 				// assigned to the triangle to indicate to the renderer to skip the double indirection
 				// through the material edge array, because it's only needed for segments.
-				int material_index = (ObjBitmapPtrs[texture_index] + MAX_TEXTURES) | RT_TRIANGLE_HOLDS_MATERIAL_EDGE;
+				uint32_t material_index = (ObjBitmapPtrs[texture_index] + MAX_TEXTURES) | RT_TRIANGLE_HOLDS_MATERIAL_EDGE;
 				RT_VertexFixToFloat_Fan(buf, nv, point_list, material_index, 0xFFFFFFFF);
 
 				p += 30 + ((nv & ~1) + 1) * 2 + nv * 12;
@@ -675,7 +744,41 @@ static void RT_GetPolyData(RT_TriangleBuffer *buf,
 
 void RT_InitglTFModels(void)
 {
-	g_rt_cockpit_gltf = RT_LoadGLTF(&g_arena, "assets/cockpit_prototype.gltf");
+	g_rt_cockpit_settings.cockpit_hud_texture = RT_UploadTexture(&(RT_UploadTextureParams) {
+		.width = 1024,
+		.height = 1024,
+		.name = "Cockpit UI",
+		.format = RT_TextureFormat_SRGBA8,
+		.pixels = RT_ArenaAllocArray(&g_thread_arena, 1024 * 1024, uint32_t)
+	});
+
+	RT_Material cockpit_material = { 0 };
+	cockpit_material.albedo_texture = RT_GetDefaultBlackTexture();
+	cockpit_material.emissive_texture = g_rt_cockpit_settings.cockpit_hud_texture;
+	cockpit_material.emissive_strength = 1.0f;
+	cockpit_material.emissive_color.x = 1.0f;
+	cockpit_material.emissive_color.y = 1.0f;
+	cockpit_material.emissive_color.z = 1.0f;
+	cockpit_material.flags = RT_MaterialFlag_NoCastingShadow;
+	RT_UpdateMaterial(RT_MATERIAL_COCKPIT_UI, &cockpit_material);
+
+	RT_MaterialOverride material_override = {
+		RT_MATERIAL_COCKPIT_UI,
+		"Screens_and_keycard_buttons"
+    };
+
+	g_rt_cockpit_settings.cockpit_gltf = RT_LoadGLTF(&g_arena, "assets/cockpit_prototype.gltf", &material_override);
+
+	RT_Config cfg;
+	RT_InitializeConfig(&cfg, &g_thread_arena);
+	if (RT_DeserializeConfigFromFile(&cfg, "cockpit_3d.cfg")) {
+		RT_ConfigReadVec3(&cfg, RT_StringLiteral("front_cockpit_rotation"), &g_rt_cockpit_settings.front_cockpit_rotation);
+		RT_ConfigReadVec3(&cfg, RT_StringLiteral("front_cockpit_offset"), &g_rt_cockpit_settings.front_cockpit_offset);
+		RT_ConfigReadVec3(&cfg, RT_StringLiteral("front_cockpit_scale"), &g_rt_cockpit_settings.front_cockpit_scale);
+		RT_ConfigReadVec3(&cfg, RT_StringLiteral("back_cockpit_rotation"), &g_rt_cockpit_settings.back_cockpit_rotation);
+		RT_ConfigReadVec3(&cfg, RT_StringLiteral("back_cockpit_offset"), &g_rt_cockpit_settings.back_cockpit_offset);
+		RT_ConfigReadVec3(&cfg, RT_StringLiteral("back_cockpit_scale"), &g_rt_cockpit_settings.back_cockpit_scale);
+	}
 }
 
 void RT_InitBasePolyModel(const int polymodel_index, g3s_point* interp_point_list, void* model_ptr, vms_angvec* anim_angles, int first_texture)
@@ -792,12 +895,9 @@ void RT_InitAllPolyModels(void)
 	}
 }
 
-void RT_DrawPolyModel(const int meshnumber, const int objNum, ubyte object_type, const vms_vector* pos, const vms_matrix* orient)
+void RT_DrawPolyModel(const int meshnumber, const int signature, ubyte object_type, const vms_vector* pos, const vms_matrix* orient)
 {
-	// NOTE(daniel): I am only seeing completely correct textures on enemies when I defer the loading of poly models
-	// to when they're actually being drawn. Not sure why, but I don't mind _except_ for that this causes stuttering.
-	// It could probably quite easily not cause stuttering with an architectural change in the renderer, or we can go
-	// find the best place to actually init the poly model.
+	// NOTE(daniel): This is never used, is it.
 
 	if (!RT_RESOURCE_HANDLE_VALID(mesh_handles[meshnumber]))
 	{
@@ -816,58 +916,62 @@ void RT_DrawPolyModel(const int meshnumber, const int objNum, ubyte object_type,
         RT_Mat4 rot = RT_Mat4Fromvms_matrix(orient);
         mat = RT_Mat4Mul(mat, RT_Mat4Fromvms_matrix(orient));
 
-		assert(objNum > 0 || objNum < MAX_OBJECTS);
+		// assert(objNum > 0 || objNum < MAX_OBJECTS);
 
 		RT_ResourceHandle handle = mesh_handles[meshnumber];
 
         // Render mesh
-		RT_RaytraceMesh(handle, &mat, &old_poly_matrix[objNum]);
-		old_poly_matrix[objNum] = mat;
+		// RT_RaytraceMesh(handle, &mat, &old_poly_matrix[objNum]);
+
+		RT_RenderMeshParams params = 
+		{
+			.key         = signature,
+			.mesh_handle = handle,
+			.transform   = &mat,
+			.color       = 0xFFFFFFFF,
+		};
+		RT_RaytraceMeshEx(&params);
 	}
 }
 
-void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submodel_transform, const RT_Mat4* const submodel_transform_prev)
+void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submodel_transform, RT_RenderKey key)
 {
 	if (RT_RESOURCE_HANDLE_VALID(submodel))
 	{
-		RT_RaytraceMesh(submodel, submodel_transform, submodel_transform_prev);
+		float alpha = 1.0f;
+		if (grd_curcanv->cv_fade_level < GR_FADE_OFF)
+		{
+			alpha = 1.0f - (float)grd_curcanv->cv_fade_level / ((float)GR_FADE_LEVELS - 1.0f);
+		}
+
+		RT_Vec4 color = { 1, 1, 1, alpha };
+
+		RT_RenderMeshParams params =
+		{
+			.key         = key,
+			.mesh_handle = submodel,
+			.transform   = submodel_transform,
+			.color       = RT_PackRGBA(color),
+		};
+		RT_RaytraceMeshEx(&params);
 	}
 }
 
-void RT_DrawPolySubModelTree(const polymodel* model, const vms_angvec* const anim_angles, int index, const int obj_num, const RT_Mat4 submodel_transform)
+void RT_DrawPolySubModelTree(const polymodel* model, const vms_angvec* const anim_angles, int submodel_index, const int signature, const RT_Mat4 submodel_transform)
 {
-	RT_SubmodelTransforms* prev_transforms = &g_rt_prev_submodel_transforms[obj_num];
-
-	RT_Mat4 prev_transform = prev_transforms->transforms[index];
-
-	// NOTE (Sam)
-	// I think this is not an issue anymore as the double draw only happened when shooting the lasers.
-	// Even before we make a new system for the motion vectors it will still not effect anything.
-#if 0
-	typedef struct RT_ObjRenderDebug
+	RT_RenderKey key =
 	{
-		uint64_t submodels[MAX_SUBMODELS];
-	} RT_ObjRenderDebug;
-	static RT_ObjRenderDebug obj_num_last_frame_rendered[MAX_OBJECTS];
-	if (g_rt_frame_index != 0 && obj_num_last_frame_rendered[obj_num].submodels[index] == g_rt_frame_index)
-	{
-		prev_transform = submodel_transform;
-		// NOTE(daniel): This issue of different rendered meshes not being properly uniquely identified will be fixed
-		// differently, so for now just render things twice and bust the motion vectors a little bit.
-		RT_LOGF(RT_LOGSERVERITY_INFO, "Submodel %d, %d was rendered more than once on frame %llu", obj_num, index, g_rt_frame_index);
-
-	}
-	obj_num_last_frame_rendered[obj_num].submodels[index] = g_rt_frame_index;
-#endif
+		.signature      = signature,
+		.submodel_index = submodel_index,
+	};
 
 	// Draw the submodel
-	RT_DrawSubPolyModel(model->submodel[index], &submodel_transform, &prev_transform);
-	prev_transforms->transforms[index] = submodel_transform;
+	RT_DrawSubPolyModel(model->submodel[submodel_index], &submodel_transform, key);
 
 	// Traverse tree structure
-	for (int i = 0; i < model->model_tree[index].n_children; ++i) {
+	for (int i = 0; i < model->model_tree[submodel_index].n_children; ++i) {
 		// anim_angles is an array, where the indices into that array allegedly correspond directly to the child indices :D
-		const int child_index = model->model_tree[index].child_indices[i];
+		const int child_index = model->model_tree[submodel_index].child_indices[i];
 
 		vms_angvec anim_angles_final;
 		if (anim_angles) {
@@ -895,11 +999,11 @@ void RT_DrawPolySubModelTree(const polymodel* model, const vms_angvec* const ani
 		// Combine them into one big matrix
 		RT_Mat4 combined_matrix = RT_Mat4Mul(offset_mat4, rotation_mat4);
 
-		RT_DrawPolySubModelTree(model, anim_angles, child_index, obj_num, combined_matrix);
+		RT_DrawPolySubModelTree(model, anim_angles, child_index, signature, combined_matrix);
 	}
 }
 
-void RT_DrawPolyModelTree(const int meshnumber, const int objNum, ubyte object_type, const vms_vector* pos, const vms_matrix* orient, vms_angvec* anim_angles) {
+void RT_DrawPolyModelTree(const int meshnumber, const int signature, ubyte object_type, const vms_vector* pos, const vms_matrix* orient, vms_angvec* anim_angles) {
 	if (!RT_RESOURCE_HANDLE_VALID(mesh_handles[meshnumber]))
 	{
 		RT_InitPolyModelAndSubModels(meshnumber);
@@ -919,7 +1023,7 @@ void RT_DrawPolyModelTree(const int meshnumber, const int objNum, ubyte object_t
     // Combine them into one big matrix
     RT_Mat4 combined_matrix = RT_Mat4Mul(offset_mat4, rotation_mat4);
 
-    RT_DrawPolySubModelTree(model, anim_angles, 0, objNum, combined_matrix);
+    RT_DrawPolySubModelTree(model, anim_angles, 0, signature, combined_matrix);
 }
 
 void RT_DrawGLTF(const RT_GLTFNode* node, RT_Mat4 transform, RT_Mat4 prev_transform)
@@ -943,10 +1047,71 @@ void RT_DrawGLTF(const RT_GLTFNode* node, RT_Mat4 transform, RT_Mat4 prev_transf
 	}
 }
 
+void RT_EnableFreeCam()
+{
+	g_rt_free_cam_info.g_free_cam_enabled = true;
+	g_rt_free_cam_info.g_old_cockpit = PlayerCfg.CockpitMode[1];
+
+	g_rt_free_cam_info.g_free_cam_obj = obj_create(OBJ_CAMERA, 0,
+		ConsoleObject->segnum, &ConsoleObject->pos, &ConsoleObject->orient, 0,
+		CT_FLYING, MT_PHYSICS, RT_NONE);
+
+	Objects[g_rt_free_cam_info.g_free_cam_obj].mtype.phys_info.drag = 2162;
+	Objects[g_rt_free_cam_info.g_free_cam_obj].mtype.phys_info.mass = 262144;
+	Objects[g_rt_free_cam_info.g_free_cam_obj].mtype.phys_info.flags = PF_USES_THRUST;
+	Objects[g_rt_free_cam_info.g_free_cam_obj].size = 310325.0F;
+
+	CollisionResult[OBJ_CAMERA][OBJ_WALL] = RESULT_CHECK; CollisionResult[OBJ_CAMERA][OBJ_WALL] = RESULT_CHECK;
+
+	Viewer = &Objects[g_rt_free_cam_info.g_free_cam_obj];
+
+	PlayerCfg.HudMode = 3; // NO HUD mode
+	select_cockpit(CM_FULL_SCREEN);
+	PlayerCfg.CockpitMode[0] = CM_FULL_SCREEN;
+}
+
+void RT_DisableFreeCam()
+{
+	g_rt_free_cam_info.g_free_cam_enabled = false;
+
+	Viewer = ConsoleObject;
+
+	CollisionResult[OBJ_CAMERA][OBJ_WALL] = RESULT_NOTHING; CollisionResult[OBJ_CAMERA][OBJ_WALL] = RESULT_NOTHING;
+
+	PlayerCfg.HudMode = 0; // Standard HUD mode
+	select_cockpit(g_rt_free_cam_info.g_old_cockpit);
+	PlayerCfg.CockpitMode[0] = g_rt_free_cam_info.g_old_cockpit;
+
+	obj_delete(g_rt_free_cam_info.g_free_cam_obj);
+}
+
+void RT_ResetLightEmission()
+{
+	int lightTexture = PCSharePig ? 774 : 997;
+	RT_Material* material = &g_rt_materials[lightTexture];
+	material->emissive_strength = 3.5f;
+	RT_UpdateMaterial(lightTexture, material);
+}
+
 void RT_StartImGuiFrame(void)
 {
 	igStartFrameWin32();
 	igNewFrame();
+
+	// NOTE(Justin): It is times like these you realize that you are under a lot of time pressure
+	// and write code like this. There is definitely a quite simple mathematical way to solve this, but whatever.
+	bool value_changed = false;
+	float fov;
+	RT_ConfigReadFloat(RT_GetRendererIO()->config, RT_StringLiteral("fov"), &fov);
+	float fov_delta = fov - g_cam.vfov;
+	if (fov_delta != 0.0)
+	{
+		float multiplier = 0.8 / 30.0;
+		g_cam.vfov = g_free_cam.vfov = fov;
+		g_rt_cockpit_settings.front_cockpit_offset.z += fov_delta * multiplier;
+		g_rt_cockpit_settings.back_cockpit_offset.z -= fov_delta * multiplier;
+		value_changed = true;
+	}
 
 	if (g_rt_enable_debug_menu)
 	{
@@ -955,54 +1120,77 @@ void RT_StartImGuiFrame(void)
 		};
 		RT_DoRendererDebugMenus(&params);
 
-		if (igBegin("Dynamic Lights", NULL, 0))
+		if (igBegin("HUD Texture Debug", NULL, 0)) {
+			igPushID_Str("HUD Texture Debug");
+			igIndent(0);
+			RT_RenderImGuiTexture(g_rt_cockpit_settings.cockpit_hud_texture, 1024, 1024);
+			igPopID();
+		} igEnd();
+
+		if (igBegin("3D Cockpit", NULL, 0)) {
+			igPushID_Str("Dynamic Lights");
+			igIndent(0);
+			value_changed |= igDragFloat3("Front View Rotation", &g_rt_cockpit_settings.front_cockpit_rotation, 0.001f, -RT_PI32, +RT_PI32, "%.3f", ImGuiTreeNodeFlags_None);
+			value_changed |= igDragFloat3("Front View Offset", &g_rt_cockpit_settings.front_cockpit_offset, 0.001f, -10.0, 10.0, "%.3f", ImGuiTreeNodeFlags_None);
+			value_changed |= igDragFloat3("Front View Scale", &g_rt_cockpit_settings.front_cockpit_scale, 0.001f, -10.0, 10.0, "%.3f", ImGuiTreeNodeFlags_None);
+			value_changed |= igDragFloat3("Rear View Rotation", &g_rt_cockpit_settings.back_cockpit_rotation, 0.001f, -RT_PI32, +RT_PI32, "%.3f", ImGuiTreeNodeFlags_None);		
+			value_changed |= igDragFloat3("Rear View Offset", &g_rt_cockpit_settings.back_cockpit_offset, 0.001f, -10.0, 10.0, "%.3f", ImGuiTreeNodeFlags_None);
+			value_changed |= igDragFloat3("Rear View Scale", &g_rt_cockpit_settings.back_cockpit_scale, 0.001f, -10.0, 10.0, "%.3f", ImGuiTreeNodeFlags_None);
+
+#ifndef RT_StringLiteral
+#define RT_StringLiteral(x) (RT_String){x, sizeof(x)-1}
+#endif
+			igPopID();
+		} igEnd();
+
+		if (igBegin("Ingame Tools", NULL, 0))
 		{
 			igPushID_Str("Dynamic Lights");
 			igIndent(0);
 
+			if (igCollapsingHeader_TreeNodeFlags("Light Culling", ImGuiTreeNodeFlags_None)) {
+				igPushID_Int(1);
+				igSliderInt("Light Culling Heuristic", &light_culling_heuristic, 0, 1, "%i", 0);
+				igSliderInt("Max Segment Recursion Depth", &max_rec_depth, 0, 50, "%i segments", 0);
+				//igSliderFloat("Max Segment Distance", &max_seg_distance, 0.0f, 5000.0f, "%.1f units", 0); // note(lily): this is broken so I commented it out
+				igSliderFloat("Max Light Distance", &max_distance, 0.0f, 1000.0f, "%.1f units", 0);
+				igPopID();
+			}
+
 			if (igCollapsingHeader_TreeNodeFlags("Weapon Light Settings", ImGuiTreeNodeFlags_None))
 			{
-				igPushID_Str("Dynamic Lights");
-				igIndent(0);
-
-				if (igCollapsingHeader_TreeNodeFlags("Weapon Light Settings", ImGuiTreeNodeFlags_None))
+				igPushID_Int(2);
+				igCheckbox("Enable Weapon and flare lights", &g_rt_dynamic_light_info.weaponFlareLights);
+				igSliderFloat("Weapon Brightness modifier", &g_rt_dynamic_light_info.weaponBrightMod, 0, 1000.f, "%.3f", 0);
+				igSliderFloat("Radius  modifier", &g_rt_dynamic_light_info.weaponRadiusMod, 0, 4.f, "%.3f", 0);
+				for (size_t i = 0; i < RT_LIGHT_ADJUST_ARRAY_SIZE; i++)
 				{
-					igPushID_Int(1);
-					igCheckbox("Enable Weapon and flare lights", &g_rt_dynamic_light_info.weaponFlareLights);
-					igSliderFloat("Weapon Brightness modifier", &g_rt_dynamic_light_info.weaponBrightMod, 0, 1000.f, "%.3f", 0);
-					igSliderFloat("Flare Brightness modifier", &g_rt_dynamic_light_info.weaponFlareBrightMod, 0, 10000.f, "%.3f", 0);
-					igSliderFloat("Radius  modifier", &g_rt_dynamic_light_info.weaponRadiusMod, 0, 4.f, "%.3f", 0);
-					for (size_t i = 0; i < RT_LIGHT_ADJUST_ARRAY_SIZE; i++)
+					RT_WeaponLightAdjusts* adj = &rt_light_adjusts[i];
+					if (igTreeNode_Str(adj->weapon_name))
 					{
-						RT_WeaponLightAdjusts* adj = &rt_light_adjusts[i];
-						if (igTreeNode_Str(adj->weapon_name))
-						{
-							igSliderFloat("Brightness", &adj->brightMul, 0, 100.f, "%.3f", 0);
-							igSliderFloat("Radius", &adj->radiusMul, 0, 10.f, "%.3f", 0);
-							igTreePop();
-						}
+						igSliderFloat("Brightness", &adj->brightMul, 0, 100.f, "%.3f", 0);
+						igSliderFloat("Radius", &adj->radiusMul, 0, 10.f, "%.3f", 0);
+						igTreePop();
 					}
-					igPopID();
 				}
-				if (igCollapsingHeader_TreeNodeFlags("Explosion Light Settings", ImGuiTreeNodeFlags_None))
-				{
-					igPushID_Int(2);
-					igCheckbox("Enable explosion lights", &g_rt_dynamic_light_info.explosionLights);
-					igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.explosionBrightMod, 0, 1000.f, "%.3f", 0);
-					igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.explosionRadiusMod, 0, 4.f, "%.3f", 0);
-					igPopID();
-				}
-				if (igCollapsingHeader_TreeNodeFlags("Muzzle fire Light Settings", ImGuiTreeNodeFlags_None))
-				{
-					igPushID_Int(3);
-					igCheckbox("Enable muzzle flare lights", &g_rt_dynamic_light_info.muzzleLights);
-					igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.muzzleBrightMod, 0, 1000.f, "%.3f", 0);
-					igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.muzzleRadiusMod, 0, 4.f, "%.3f", 0);
-					igPopID();
-				}
-
 				igPopID();
-				igUnindent(0);
+			}
+			if (igCollapsingHeader_TreeNodeFlags("Explosion Light Settings", ImGuiTreeNodeFlags_None))
+			{
+				igPushID_Int(3);
+				igCheckbox("Enable explosion lights", &g_rt_dynamic_light_info.explosionLights);
+				igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.explosionBrightMod, 0, 1000.f, "%.3f", 0);
+				igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.explosionRadiusMod, 0, 4.f, "%.3f", 0);
+				igSliderFloat("Type bias modifier", &g_rt_dynamic_light_info.explosionTypeBias, 0.10f, 10.f, "%.3f", 0);
+				igPopID();
+			}
+			if (igCollapsingHeader_TreeNodeFlags("Muzzle fire Light Settings", ImGuiTreeNodeFlags_None))
+			{
+				igPushID_Int(4);
+				igCheckbox("Enable muzzle flare lights", &g_rt_dynamic_light_info.muzzleLights);
+				igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.muzzleBrightMod, 0, 1000.f, "%.3f", 0);
+				igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.muzzleRadiusMod, 0, 4.f, "%.3f", 0);
+				igPopID();
 			}
 			if (igCollapsingHeader_TreeNodeFlags("Miscellaneous", ImGuiTreeNodeFlags_None))
 			{
@@ -1015,18 +1203,31 @@ void RT_StartImGuiFrame(void)
 				igUnindent(0);
 			}
 
-			igUnindent(0);
+			if (igCollapsingHeader_TreeNodeFlags("Free cam settings", ImGuiTreeNodeFlags_None))
+			{
+				igCheckbox("Enable free cam clipping", &g_rt_free_cam_info.g_free_cam_clipping_enabled);
+			}
+
 			igPopID();
+			igUnindent(0);
 		} igEnd();
-		
+
 		RT_ShowLightMenu();
 
 		RT_DoPolymodelViewerMenus();
 		RT_DoMaterialViewerMenus();
+	}
 
-		// Moved to render.c!
-		// RT_RenderPolyModelViewer();
-		// RT_RenderMaterialViewer();
+	if (value_changed) {
+		RT_Config cfg;
+		RT_InitializeConfig(&cfg, &g_thread_arena);
+		RT_ConfigWriteVec3(&cfg, RT_StringLiteral("front_cockpit_rotation"), g_rt_cockpit_settings.front_cockpit_rotation);
+		RT_ConfigWriteVec3(&cfg, RT_StringLiteral("front_cockpit_offset"), g_rt_cockpit_settings.front_cockpit_offset);
+		RT_ConfigWriteVec3(&cfg, RT_StringLiteral("front_cockpit_scale"), g_rt_cockpit_settings.front_cockpit_scale);
+		RT_ConfigWriteVec3(&cfg, RT_StringLiteral("back_cockpit_rotation"), g_rt_cockpit_settings.back_cockpit_rotation);
+		RT_ConfigWriteVec3(&cfg, RT_StringLiteral("back_cockpit_offset"), g_rt_cockpit_settings.back_cockpit_offset);
+		RT_ConfigWriteVec3(&cfg, RT_StringLiteral("back_cockpit_scale"), g_rt_cockpit_settings.back_cockpit_scale);
+		RT_SerializeConfigToFile(&cfg, "cockpit_3d.cfg");
 	}
 }
 

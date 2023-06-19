@@ -30,6 +30,7 @@ void DirectLightingRaygen()
 	geo_ray_output.roughness      = img_roughness[dispatch_idx].x;
 	geo_ray_output.vis_prim       = img_visibility_prim[dispatch_idx].xy;
 	geo_ray_output.vis_bary       = img_visibility_bary[dispatch_idx].xy;
+	geo_ray_output.world_p        = ReconstructWorldPosFromGBuffer(dispatch_idx);
 
 	geo_ray_output.instance_data  = g_instance_data_buffer[geo_ray_output.vis_prim.x];
 	geo_ray_output.hit_triangle   = GetHitTriangle(geo_ray_output.instance_data.triangle_buffer_idx, geo_ray_output.vis_prim.y);

@@ -1,0 +1,3 @@
+albedo_texture    = blown06_basecolor.png
+metalness_texture = blown06_metallic.png
+roughness_texture = blown06_roughness.png

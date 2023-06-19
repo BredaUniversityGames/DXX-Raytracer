@@ -141,7 +141,7 @@ int gamedata_init()
 	RT_InitAllPolyModels();
     RT_InitAllBitmaps();
     RT_InitglTFModels();
-    RT_RaytraceSetSkyColors((RT_Vec3){ 0.1f,0.1f,0.125f }, (RT_Vec3){ 0.1f,0.1f,0.125f });
+    RT_RaytraceSetSkyColors((RT_Vec3){ 0.0f,0.0f,0.000f }, (RT_Vec3){ 0.0f,0.0f,0.000f });
 #endif
 
 	return 0;

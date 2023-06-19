@@ -6,9 +6,12 @@
 #include "Core/Arena.h"
 #include "Core/MemoryScope.hpp"
 #include "Core/SlotMap.hpp"
+#include "Core/Config.h"
+#include "Core/String.h"
 
 #include "Renderer.h"
 #include "ResourceTracker.hpp"
+#include "MeshTracker.hpp"
 #include "DescriptorArena.hpp"
 #include "RingBuffer.h"
 #include "ShaderTable.h"
@@ -34,8 +37,9 @@ namespace RT
 	constexpr uint32_t MAX_BOTTOM_LEVELS		= 1000;
 	constexpr uint32_t HALTON_SAMPLE_COUNT      = 128;
 	constexpr uint32_t MAX_RASTER_TRIANGLES		= 10000;
-	constexpr uint32_t MAX_RASTER_LINES			= 2000;
+	constexpr uint32_t MAX_RASTER_LINES			= 5000;
 	constexpr uint32_t MAX_DEBUG_LINES_WORLD	= 5000;
+	constexpr uint32_t CBV_SRV_UAV_HEAP_SIZE	= 65536;
 
 	struct RaytracingShader
 	{
@@ -120,6 +124,7 @@ namespace RT
 
 		ID3D12Resource* texture;
 		DescriptorAllocation descriptors;
+		DescriptorAllocation rtv_descriptor;
 	};
 
 	struct PrimaryRayPayload
@@ -263,8 +268,10 @@ namespace RT
 		RT_Vec3 sky_color_bottom;
 
 		RT_RendererIO io;
+		uint64_t tweakvars_config_last_modified_time;
 
 		D3D12ResourceTracker resource_tracker;
+		MeshTracker mesh_tracker;
 
 		TextureResource  *white_texture;
 		RT_ResourceHandle white_texture_handle;
@@ -325,6 +332,8 @@ namespace RT
 
 		ID3D12RootSignature* global_root_sig;
 
+		RT_Config global_shader_defines;
+
 		union
 		{
 			struct  
@@ -356,6 +365,8 @@ namespace RT
 			RaytracingPipeline rt_pipelines_all[sizeof(rt_pipelines) / sizeof(RaytracingPipeline)];
 		};
 
+		ID3D12RootSignature* gen_mipmap_root_sig;
+
 		struct 
 		{
 			ComputeShader restir_gen_candidates;
@@ -375,6 +386,8 @@ namespace RT
 			ComputeShader composite;
 			ComputeShader post_process;
 			ComputeShader resolve_final_color;
+
+			ComputeShader gen_mipmaps;
 		} cs;
 
 		ID3D12Resource* raygen_shader_table;
@@ -395,7 +408,7 @@ namespace RT
 		};
 		DXGI_FORMAT render_target_formats[RenderTarget_COUNT];
 
-		D3D12_CPU_DESCRIPTOR_HANDLE color_final_rtv;
+		DescriptorAllocation color_final_rtv;
 		ID3D12Resource *blue_noise_textures[BLUE_NOISE_TEX_COUNT];
 
 		struct  
@@ -420,6 +433,7 @@ namespace RT
 			int freezeframe;
 
 			size_t hitgroups_table_at;
+			bool render_blit;
 		} scene;
 
 		RingBuffer resource_upload_ring_buffer;
@@ -433,9 +447,12 @@ namespace RT
 		D3D12_CPU_DESCRIPTOR_HANDLE depth_target_dsv;
 
 		D3D12_VIEWPORT viewport;
+		ID3D12Resource* render_target;
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle;
 
 		// UI quad rendering
 		ID3D12PipelineState* tri_state;
+		ID3D12PipelineState* tri_state_srgb;
 		ID3D12RootSignature* tri_root_sig;
 
 		ID3D12Resource* tri_vertex_buffer;
@@ -461,6 +478,9 @@ namespace RT
 		size_t debug_line_at;
 		size_t debug_line_count;
 		RT_RasterLineVertex* debug_line_vertex_buf_ptr;
+
+		ID3D12PipelineState* blit_state;
+		ID3D12RootSignature* blit_root_sig;
 	};
 
 	extern D3D12RasterState g_d3d_raster;

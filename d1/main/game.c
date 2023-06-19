@@ -103,6 +103,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifdef RT_DX12
 #include "polymodel_viewer.h"
 #include "globvars.h"
+#include "Game/Lights.h"
 #endif
 
 
@@ -1012,6 +1013,12 @@ window *game_setup(void)
 	init_gauges();
 	netplayerinfo_on = 0;
 
+#ifdef RT_DX12
+	g_light_multiplier = g_light_multiplier_default; //Needs to be changed to RTconfig
+	g_pending_light_update = true;
+	RT_ResetLightEmission();
+#endif
+
 #ifdef EDITOR
 	if (!Cursegp)
 	{
@@ -1083,7 +1090,7 @@ int game_handler(window *wind, d_event *event, void *data)
 
 			if (!((Game_mode & GM_MULTI) && (Newdemo_state != ND_STATE_PLAYBACK)))
 				palette_save();
-
+			
 			event_toggle_focus(0);
 			key_toggle_repeat(1);
 			break;
@@ -1100,6 +1107,7 @@ int game_handler(window *wind, d_event *event, void *data)
 			return ReadControls(event);
 
 		case EVENT_WINDOW_DRAW:
+
 			if (!time_paused)
 			{
 				calc_frame_time();
@@ -1130,6 +1138,9 @@ int game_handler(window *wind, d_event *event, void *data)
 			digi_stop_digi_sounds();
 #ifdef RT_DX12
 			g_rt_enable_debug_menu = false;
+
+			if (g_rt_free_cam_info.g_free_cam_enabled)
+				RT_DisableFreeCam();
 #endif
 			if ( (Newdemo_state == ND_STATE_RECORDING) || (Newdemo_state == ND_STATE_PAUSED) )
 				newdemo_stop_recording();
@@ -1202,6 +1213,13 @@ void GameProcessFrame(void)
 {
 	fix player_shields = Players[Player_num].shields;
 	int player_was_dead = Player_is_dead;
+
+#ifdef RT_DX12
+	if (g_rt_free_cam_info.g_free_cam_enabled) {
+		object_move_one(&Objects[g_rt_free_cam_info.g_free_cam_obj]);
+		return;
+	}
+#endif
 
 	update_player_stats();
 	diminish_palette_towards_normal();		//	Should leave palette effect up for as long as possible by putting right before render.

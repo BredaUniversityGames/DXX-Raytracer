@@ -53,11 +53,11 @@ RT_DynamicLightInfo g_rt_dynamic_light_info =
 	.explosionLights = true,
 	.explosionBrightMod = 50.0f,
 	.explosionRadiusMod = 1.0f,
+	.explosionTypeBias = 1.0f,
 
 	.weaponFlareLights = true,
 	.weaponBrightMod = 30.0f,
 	.weaponRadiusMod = 1.0f,
-	.weaponFlareBrightMod = 1000.0f,
 
 	.muzzleLights = true,
 	.muzzleBrightMod = 250.0f,
@@ -480,6 +480,10 @@ g3s_lrgb compute_light_emission(int objnum)
 					return lemission;
 				brightness = g_rt_dynamic_light_info.explosionBrightMod;
 				radius = g_rt_dynamic_light_info.explosionRadiusMod;
+				//NOTE (sam) I only do this for explosions since weapons can be adjusted by the player.
+				float generalBrightMod = (f2fl(light_intensity) * 0.25f) * g_rt_dynamic_light_info.explosionTypeBias;
+				brightness = brightness * (generalBrightMod * 3);
+				radius = radius * (generalBrightMod * 0.10f);
 				break;
 			case OBJ_WEAPON:
 				if (!g_rt_dynamic_light_info.weaponFlareLights)
@@ -513,15 +517,9 @@ g3s_lrgb compute_light_emission(int objnum)
 
 			RT_Vec3 pos = RT_Vec3Fromvms_vector(&obj->pos);
 
-
-
-			if (obj->id == FLARE_ID)
-			{
-				// And I want to prevent it clipping into the wall too much.
-				RT_Vec3 forward = RT_Vec3Fromvms_vector(&obj->orient.fvec);
-				pos = RT_Vec3MulsAdd(pos, forward, -0.75f);
-			}
-
+			// And I want to prevent it clipping into the wall too much.
+			RT_Vec3 forward = RT_Vec3Fromvms_vector(&obj->orient.fvec);
+			pos = RT_Vec3MulsAdd(pos, forward, -1.f);
 
 			// NOTE(daniel): I rescaled lighting because the emission is now encoded in RGBE which has limited range compared to float.
 			brightness /= RT_LIGHT_SCALE;

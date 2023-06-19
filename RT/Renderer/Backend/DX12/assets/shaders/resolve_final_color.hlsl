@@ -24,6 +24,7 @@ void Preload(uint2 shared_pos, uint2 global_pos)
 void ResolveFinalColorCS(COMPUTE_ARGS)
 {
 	PRELOAD_INTO_SHARED
+	EARLY_OUT
 
 	float3 color = shared_color[thread_pos.y + BORDER][thread_pos.x + BORDER];
 
@@ -60,5 +61,5 @@ void ResolveFinalColorCS(COMPUTE_ARGS)
 	dither_noise = dither_noise.rgb - dither_noise.gbr;
 	color += dither_noise / 255.0;
 
-	img_color_final[pixel_pos] = float4(color, 1);
+	img_scene[pixel_pos] = float4(color, 1);
 }

@@ -3,9 +3,11 @@
 //------------------------------------------------------------------------
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
-void CompositeCS(uint3 thread_id : SV_DispatchThreadID)
+void CompositeCS(COMPUTE_ARGS)
 {
-	int2 co = thread_id.xy;
+	EARLY_OUT
+
+	int2 co = pixel_pos.xy;
 
 	float3 albedo   = img_albedo  [co].rgb;
 	float3 emissive = img_emissive[co].rgb;

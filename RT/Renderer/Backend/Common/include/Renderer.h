@@ -9,9 +9,12 @@
 
 // ------------------------------------------------------------------
 
-#define RT_MAX_TEXTURES  (2010)
-#define RT_MAX_MATERIALS (2010)
+#define RT_MAX_TEXTURES  (3*2010)
+#define RT_MAX_BITMAP_FILES (1800) // mirrored from the game to avoid dependency on game headers 
 #define RT_MAX_OBJ_BITMAPS (210) // mirrored from the game to avoid dependency on game headers 
+#define RT_EXTRA_BITMAP_COUNT (100) // for GLTF loading and such, some extra headroom
+#define RT_EXTRA_BITMAPS_START (RT_MAX_BITMAP_FILES + RT_MAX_OBJ_BITMAPS)
+#define RT_MAX_MATERIALS (RT_MAX_BITMAP_FILES + RT_MAX_OBJ_BITMAPS + RT_EXTRA_BITMAP_COUNT)
 #define RT_MAX_SEGMENTS (9000) // mirrored from the game to avoid dependency on game headers
 #define RT_SIDES_PER_SEGMENT (6)
 #define RT_TRIANGLES_PER_SIDE (2)
@@ -21,15 +24,19 @@
 
 // OR this in for triangle->material_edge_index for poly objects and have them
 // skip the material edges array...
-#define RT_TRIANGLE_HOLDS_MATERIAL_EDGE (1 << 15)
+#define RT_TRIANGLE_HOLDS_MATERIAL_EDGE  (1 << 31)
+#define RT_TRIANGLE_HOLDS_MATERIAL_INDEX (1 << 30)
 #define RT_TRIANGLE_MATERIAL_INSTANCE_OVERRIDE (0xFFFF)
 
 // Some built in materials to use
 #define RT_MATERIAL_FLAT_WHITE       (RT_MAX_MATERIALS - 1)
 #define RT_MATERIAL_EMISSIVE_WHITE   (RT_MAX_MATERIALS - 2)
 #define RT_MATERIAL_ENDLEVEL_TERRAIN (RT_MAX_MATERIALS - 3)
+#define RT_MATERIAL_COCKPIT_UI       (RT_MAX_MATERIALS - 4)
+#define RT_MATERIAL_SATELLITE        (RT_MAX_MATERIALS - 5)
 
 typedef struct RT_Arena RT_Arena;
+typedef struct RT_Config RT_Config;
 
 typedef struct RT_MaterialEdge
 {
@@ -56,17 +63,32 @@ typedef struct RT_RendererInitParams
 
 enum RT_RenderMeshFlags
 {
-	RT_RenderMeshFlags_ReverseCulling = (1 << 0)
+	RT_RenderMeshFlags_ReverseCulling = (1 << 0),
+	RT_RenderMeshFlags_Teleport       = (1 << 1), // signifies that the prev transform should be discarded, because the mesh moved in a discontinuous way.
 };
+
+typedef struct RT_RenderKey
+{
+	union
+	{
+		struct
+		{
+			int signature;
+			int submodel_index;
+		};
+		uint64_t value;
+	};
+} RT_RenderKey;
 
 typedef struct RT_RenderMeshParams
 {
+	RT_RenderKey key; // unique identifier to automatically track prev transforms (adding this to the renderer was maybe a mistake, but it's here now)
+	uint32_t flags;
 	RT_ResourceHandle mesh_handle;
 	const RT_Mat4* transform;
-	const RT_Mat4* prev_transform;
+	const RT_Mat4* prev_transform; // if you supply this the renderer uses it instead of the tracked prev transform it knows from the key
 	uint32_t color;
 	uint16_t material_override;
-	uint32_t flags;
 } RT_RenderMeshParams;
 
 // Volatile: Must match common.hlsl
@@ -106,6 +128,7 @@ typedef struct RT_RendererIO
 
 	// in/out:
 	int debug_render_mode;
+	RT_Config *config;
 
 	// out:
 	bool frame_frozen;
@@ -125,6 +148,11 @@ static char g_rt_texture_format_bpp[] =
 	1,
 };
 
+typedef enum RT_TextureFlag
+{
+	RT_TextureFlag_None
+} RT_TextureFlag;
+
 typedef struct RT_UploadTextureParams
 {
 	RT_TextureFormat format;
@@ -133,6 +161,7 @@ typedef struct RT_UploadTextureParams
 	uint32_t height;
 	uint32_t pitch;
 	uint32_t* pixels;
+	uint8_t flags;
 
 	const char *name; // Optional, used for enhanced graphics debugging
 } RT_UploadTextureParams;
@@ -202,9 +231,12 @@ typedef struct RT_DoRendererDebugMenuParams
 	bool ui_has_cursor_focus;
 } RT_DoRendererDebugMenuParams;
 
+// @Volatile: Must match definition in common.hlsl
 typedef enum RT_MaterialFlags
 {
 	RT_MaterialFlag_BlackbodyRadiator = 0x1, // things like lava, basically just treats the albedo as an emissive map and skips all shading
+	RT_MaterialFlag_NoCastingShadow   = 0x2,
+	RT_MaterialFlag_Light             = 0x4,
 } RT_MaterialFlags;
 
 typedef enum RT_MaterialTextureSlot
@@ -243,6 +275,7 @@ typedef struct RT_SceneSettings
 	RT_Camera* camera;
 	uint32_t render_width_override;
 	uint32_t render_height_override;
+	bool render_blit;
 } RT_SceneSettings;
 
 typedef struct RT_RasterTrianglesParams
@@ -281,11 +314,14 @@ RT_API RT_ResourceHandle RT_UploadTexture(const RT_UploadTextureParams* params);
 // Returns the material_index you passed in, or UINT16_MAX if it was out of bounds.
 RT_API uint16_t RT_UpdateMaterial(uint16_t material_index, const RT_Material *material);
 RT_API RT_ResourceHandle RT_UploadMesh(const RT_UploadMeshParams* params);
+RT_API void RT_ReleaseTexture(const RT_ResourceHandle texture_handle);
 RT_API void RT_ReleaseMesh(const RT_ResourceHandle mesh_handle);
 RT_API bool RT_GenerateTangents(RT_Triangle *triangles, size_t triangle_count); // Will modify triangles in-place to add tangent vectors
 
 RT_API RT_ResourceHandle RT_GetDefaultWhiteTexture(void);
 RT_API RT_ResourceHandle RT_GetDefaultBlackTexture(void);
+RT_API RT_ResourceHandle RT_GetBillboardMesh(void);
+RT_API RT_ResourceHandle RT_GetCubeMesh(void);
 
 RT_API int RT_CheckWindowMinimized(void);
 
@@ -310,6 +346,7 @@ static inline void RT_RaytraceSubmitLight(RT_Light light)
 {
 	RT_RaytraceSubmitLights(1, &light);
 }
+RT_API uint32_t RT_RaytraceGetCurrentLightCount();
 RT_API void RT_RaytraceSetVerticalOffset(float new_offset);
 RT_API float RT_RaytraceGetVerticalOffset();
 RT_API void RT_RaytraceSetSkyColors(RT_Vec3 sky_top, RT_Vec3 sky_bottom);
@@ -317,15 +354,20 @@ RT_API void RT_RaytraceSetSkyColors(RT_Vec3 sky_top, RT_Vec3 sky_bottom);
 // -------------------------------------------------------------------------------
 // Rasterizer functions
 
-// This sets the rasterizers viewport (UI)
+// Sets the rasterization viewport for the upcoming rasterization submissions
 RT_API void RT_RasterSetViewport(float x, float y, float width, float height);
-// Used to rasterize UI triangles
+// Sets the render target for the upcoming rasterization submissions. Also clears the render target
+RT_API void RT_RasterSetRenderTarget(RT_ResourceHandle texture);
+// Used to rasterize triangles to the currently set render target
 RT_API void RT_RasterTriangles(RT_RasterTrianglesParams* params, uint32_t num_params);
-// Used to rasterize UI lines
+// Used to rasterize lines to the currently set render target
 RT_API void RT_RasterLines(RT_RasterLineVertex* vertices, uint32_t num_vertices);
-// Used to rasterize debug lines in the actual 3D world
-RT_API void RT_DrawLineWorld(RT_Vec3 a, RT_Vec3 b, RT_Vec4 color);
+// Used to rasterize debug lines in the actual 3D world. This will always render to the final ouput, not the currently set rasterization target
+RT_API void RT_RasterLineWorld(RT_Vec3 a, RT_Vec3 b, RT_Vec4 color);
 RT_API void RT_RasterLinesWorld(RT_RasterLineVertex* vertices, uint32_t num_vertices);
+RT_API void RT_RasterBlitScene(const RT_Vec2* top_left, const RT_Vec2* bottom_right, bool blit_blend);
+RT_API void RT_RasterBlit(RT_ResourceHandle src, const RT_Vec2* top_left, const RT_Vec2* bottom_right, bool blit_blend);
+// Used to flush the rasterizer with all pending geometry that needs to be drawn
 RT_API void RT_RasterRender();
 
 // -------------------------------------------------------------------------------

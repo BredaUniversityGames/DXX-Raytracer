@@ -57,6 +57,7 @@
 	_(bloom5,                             47,   128,   128,     float4, DXGI_FORMAT_R11G11B10_FLOAT) \
 	_(bloom6,                             48,   256,   256,     float4, DXGI_FORMAT_R11G11B10_FLOAT) \
 	_(bloom7,                             49,   512,   512,     float4, DXGI_FORMAT_R11G11B10_FLOAT) \
-	_(color_reference,                    50,     1,     1,     float4, DXGI_FORMAT_R32G32B32A32_FLOAT) \
-	_(color_final,                        51,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
-	_(debug,							  52,     1,     1,     float4, DXGI_FORMAT_R32G32B32A32_FLOAT)
+	_(scene,							  50,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
+	_(color_reference,                    51,     1,     1,     float4, DXGI_FORMAT_R32G32B32A32_FLOAT) \
+	_(color_final,                        52,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
+	_(debug,							  52,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM)

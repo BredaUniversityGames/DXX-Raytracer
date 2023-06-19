@@ -6,6 +6,8 @@
 #include "RTgr.h"
 #include "RTmaterials.h"
 
+float g_light_multiplier = 1.0;
+float g_light_multiplier_default = 1.0;
 const float FLT_MAX = 3.402823466e+38F;
 
 RT_LightDefinition g_light_definitions[] =
@@ -227,6 +229,11 @@ RT_Light RT_InitLight(RT_LightDefinition definition, RT_Vertex* vertices, RT_Vec
 void RT_ShowLightMenu()
 {
 	igBegin("Light Explorer", false, ImGuiWindowFlags_AlwaysAutoResize);
+	if(igSliderFloat("Global brightness: ", &g_light_multiplier_default, 0.000001f, 15.0f, "%f", ImGuiSliderFlags_Logarithmic)){
+		g_light_multiplier = g_light_multiplier_default;
+		g_pending_light_update = true;
+	}
+	
 	igText("Current active light count: %i / %i", g_active_lights, RT_MAX_LIGHTS);
 	
 	if (igCollapsingHeader_TreeNodeFlags("Light definitions", ImGuiTreeNodeFlags_None)) {
@@ -237,7 +244,11 @@ void RT_ShowLightMenu()
 		{
 			igPushID_Int(i);
 			RT_LightDefinition* light = &g_light_definitions[i];
-			ushort texture_index = piggy_find_bitmap(light->name).index;
+
+			char light_name[128];
+			strncpy(light_name, light->name, 128);
+
+			ushort texture_index = piggy_find_bitmap(light_name).index;
 
 			if (texture_index > 0){
 				char* light_name_buffer = RT_ArenaPrintF(&g_thread_arena, "Light: %s", light->name);
@@ -283,31 +294,31 @@ void RT_VisualizeLight(RT_Light* light)
 	{
 		case RT_LightKind_Area_Rect:
 			RT_Vec3 normal = RT_Vec3Make(light->transform.r0.y, light->transform.r1.y, light->transform.r2.y);
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Muls(normal, 10.0)), RT_Vec4Make(1.0, 0.0, 1.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Muls(normal, 10.0)), RT_Vec4Make(1.0, 0.0, 1.0, 1.0));
 
 			RT_Vec3 tangent = RT_Vec3Make(light->transform.e[0][0],light->transform.e[1][0],light->transform.e[2][0]);
 			RT_Vec3 bitangent = RT_Vec3Make(light->transform.e[0][2],light->transform.e[1][2],light->transform.e[2][2]);
 			RT_Vec3 emission_unpack = RT_UnpackRGBE(light->emission);
 			RT_Vec4 emission = RT_Vec4Make(emission_unpack.x, emission_unpack.y, emission_unpack.z, 1.0);
 
-			RT_DrawLineWorld(RT_Vec3Sub(RT_Vec3Sub(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, tangent),bitangent), emission);
-			RT_DrawLineWorld(RT_Vec3Sub(RT_Vec3Sub(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, bitangent),tangent), emission);
-			RT_DrawLineWorld(RT_Vec3Add(RT_Vec3Add(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, tangent),bitangent), emission);
-			RT_DrawLineWorld(RT_Vec3Add(RT_Vec3Add(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, bitangent),tangent), emission);
+			RT_RasterLineWorld(RT_Vec3Sub(RT_Vec3Sub(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, tangent),bitangent), emission);
+			RT_RasterLineWorld(RT_Vec3Sub(RT_Vec3Sub(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, bitangent),tangent), emission);
+			RT_RasterLineWorld(RT_Vec3Add(RT_Vec3Add(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, tangent),bitangent), emission);
+			RT_RasterLineWorld(RT_Vec3Add(RT_Vec3Add(pos, tangent),bitangent), RT_Vec3Sub(RT_Vec3Add(pos, bitangent),tangent), emission);
 
-			RT_DrawLineWorld(RT_Vec3Sub(pos, tangent), RT_Vec3Add(pos, tangent), RT_Vec4Make(0.0, 1.0, 0.0, 1.0));
-			RT_DrawLineWorld(RT_Vec3Sub(pos, bitangent), RT_Vec3Add(pos, bitangent), RT_Vec4Make(0.0, 0.0, 1.0, 1.0));
+			RT_RasterLineWorld(RT_Vec3Sub(pos, tangent), RT_Vec3Add(pos, tangent), RT_Vec4Make(0.0, 1.0, 0.0, 1.0));
+			RT_RasterLineWorld(RT_Vec3Sub(pos, bitangent), RT_Vec3Add(pos, bitangent), RT_Vec4Make(0.0, 0.0, 1.0, 1.0));
 		break;
 
 		case RT_LightKind_Area_Sphere:
 			RT_Vec3 scale = RT_ScaleFromMat34(light->transform);
 			
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(scale.x,0.0,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(-scale.x,0.0,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,scale.y,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,-scale.y,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,0.0,scale.z)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
-			RT_DrawLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,0.0,-scale.z)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(scale.x,0.0,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(-scale.x,0.0,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,scale.y,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,-scale.y,0.0)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,0.0,scale.z)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
+			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,0.0,-scale.z)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
 		break;
 	}
 }

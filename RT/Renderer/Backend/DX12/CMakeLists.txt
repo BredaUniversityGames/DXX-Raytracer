@@ -60,6 +60,7 @@ set (Renderer_SOURCE
 "src/DescriptorArena.cpp"
 "src/ResourceTracker.cpp"
 "src/mikktspace.c"
+"src/MeshTracker.cpp"
 ${IMGUI_SOURCE_FILES}
 ${IMPLOT_SOURCE_FILES}
 )

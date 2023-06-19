@@ -2,19 +2,67 @@
 
 //------------------------------------------------------------------------
 
+float LinearTosRGB(float x)
+{
+	return x <= 0.0031308 ? x*12.92 : pow(1.055*x, 1.0 / 2.4) - 0.055;
+}
+
+float3 LinearTosRGB(float3 x)
+{
+	return float3(LinearTosRGB(x.x), LinearTosRGB(x.y), LinearTosRGB(x.z));
+}
+
+float NaturalShoulder(float x)
+{
+    return 1.0 - exp(-x);
+}
+
+float NaturalShoulder(float x, float t)
+{
+    float v1 = x;
+    float v2 = t + (1.0 - t) * NaturalShoulder((x - t) / (1.0 - t));
+    return x <= t ? v1 : v2;
+}
+
+float3 NaturalShoulder(float3 x, float t)
+{
+    return float3(
+        NaturalShoulder(x.x, t),
+        NaturalShoulder(x.y, t),
+        NaturalShoulder(x.z, t)
+    );
+}
+
 float3 ApplyTonemappingCurve(float3 color)
 {
-	// TODO(daniel): What kind of tonemapping do we desire?
-	float3 result = 1.0 - exp(-color);
-	return result;
+    return NaturalShoulder(color.xyz, tweak.tonemap_linear_section) * rcp(NaturalShoulder(tweak.tonemap_whitepoint, tweak.tonemap_linear_section));
+}
+
+float3 ColorPreservingTonemap(float3 color)
+{
+    float3 per_channel = ApplyTonemappingCurve(color.xyz);
+
+    float peak = max(color.x, max(color.y, color.z));
+    color.xyz *= rcp(peak + 1e-6);
+    color.xyz *= ApplyTonemappingCurve(peak);
+
+    color.xyz = lerp(color.xyz, per_channel, tweak.tonemap_hue_shift);
+
+    return color;
 }
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
-void PostProcessCS(int2 co : SV_DispatchThreadID)
+void PostProcessCS(COMPUTE_ARGS)
 {
+	EARLY_OUT
+
+	int2 co = pixel_pos;
+
 	float2 uv = (float2(co) + 0.5) / float2(g_global_cb.render_dim);
 
 	float3 color = tex_taa_result[co].rgb;
+
+	// Adding the color overlay for picking stuff up/damaged to the final color.
 
 	if (tweak.motion_blur_quality > 0)
 	{
@@ -79,8 +127,15 @@ void PostProcessCS(int2 co : SV_DispatchThreadID)
 	//------------------------------------------------------------------------
 	// Tonemap and sRGB
 
-	color = ApplyTonemappingCurve(color);
-	color = pow(abs(color), 1.0 / 2.22);
+	color *= exp2(tweak.exposure);
+
+	color = ColorPreservingTonemap(color);
+	color = LinearTosRGB(color);
+
+	// NOTE(daniel): Moved up here from where it was before, because it was being applied
+	// over top the debug display which isn't helpful. Adding it after tonemap/srgb conversion
+	// is maybe questionable but it probably matches the game's original rendering better
+	color += g_global_cb.screen_color_overlay.xyz;
 
 	//------------------------------------------------------------------------
 	// Debug texture view
@@ -133,7 +188,7 @@ void PostProcessCS(int2 co : SV_DispatchThreadID)
 		case RT_DebugRenderMode_Motion:
 		{
 			float4 motion = img_motion[co];
-			debug_color = float3(abs(motion.xy) * 10.0, 0);
+			debug_color = float3(abs(motion.xy) * 100.0, 0);
 		} break;
 
 		case RT_DebugRenderMode_MetallicRoughness:
@@ -236,9 +291,5 @@ void PostProcessCS(int2 co : SV_DispatchThreadID)
 	}
 
 	float3 final_color = lerp(color, debug_color, debug_blend_factor);
-
-	//Adding the color overlay for picking stuff up/damaged to the final color.
-	final_color = final_color + g_global_cb.screen_color_overlay.xyz;
-
 	img_color[co] = float4(final_color, 1.0);
 }

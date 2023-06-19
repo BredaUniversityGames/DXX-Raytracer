@@ -24,3 +24,26 @@ void RT_FATAL_ERROR_(const char *explanation, const char *title, const char *fil
 
     ExitProcess(1); // goodbye forever
 }
+
+static LARGE_INTEGER perf_freq;
+
+RT_HighResTime RT_GetHighResTime(void)
+{
+    LARGE_INTEGER value;
+    QueryPerformanceCounter(&value);
+
+    RT_HighResTime result;
+    result.value = value.QuadPart;
+    return result;
+}
+
+double RT_SecondsElapsed(RT_HighResTime start, RT_HighResTime end)
+{
+    if (!perf_freq.QuadPart)
+    {
+        QueryPerformanceFrequency(&perf_freq);
+    }
+
+    double result = (double)(end.value - start.value) / (double)perf_freq.QuadPart;
+    return result;
+}

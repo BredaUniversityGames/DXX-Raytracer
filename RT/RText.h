@@ -8,8 +8,9 @@
 #define _RT_EXT_H
 
 #ifdef RT_DX12
-#define _RT_DRAW_POLY const int objNum, ubyte object_type,
-#define _RT_DRAW_POLY_SEND obj->objNum, obj->type,
+// NOTE(daniel): This makes me very sad I wish it didn't exist
+#define _RT_DRAW_POLY const int signature, ubyte object_type,
+#define _RT_DRAW_POLY_SEND obj->signature, obj->type,
 #define _RT_DRAW_POLY_SEND_NULL 0, OBJ_NONE,
 #else
 #define _RT_DRAW_POLY

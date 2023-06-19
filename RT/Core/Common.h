@@ -3,12 +3,22 @@
 #include "ApiTypes.h"
 
 #include <assert.h>
+#include <string.h>
 
 #define RT_ASSERT(x) assert(x)
 #define RT_INVALID_DEFAULT_CASE default: { RT_ASSERT(!"Invalid default case!"); } break;
 
 RT_API void RT_FATAL_ERROR_(const char *explanation, const char *title, const char *file, int line);
 #define RT_FATAL_ERROR(explanation) RT_FATAL_ERROR_(explanation, "Fatal Error", __FILE__, __LINE__)
+
+// A wrapper over QueryPerformanceCounter, the high resolution timer Windows provides, that doesn't require you to include Windows.h
+typedef struct RT_HighResTime
+{
+	uint64_t value;
+} RT_HighResTime;
+
+RT_API RT_HighResTime RT_GetHighResTime(void);
+RT_API double RT_SecondsElapsed(RT_HighResTime start, RT_HighResTime end);
 
 #define ALWAYS(x) (RT_ASSERT(x), x)
 #define NEVER(x)  (RT_ASSERT(!(x)), x)

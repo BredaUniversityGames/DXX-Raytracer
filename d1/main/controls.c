@@ -65,7 +65,6 @@ void read_flying_controls( object * obj )
 		vm_vec_scale_add2(&obj->mtype.phys_info.thrust,&obj->orient.uvec, Controls.vertical_thrust_time );
 	}
 
-	
 	if (obj->mtype.phys_info.flags & PF_WIGGLE) {
 		fix swiggle;
 		fix_fastsincos(((fix)GameTime64), &swiggle, NULL);

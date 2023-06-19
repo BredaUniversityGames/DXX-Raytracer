@@ -631,7 +631,15 @@ void LoadLevel(int level_num,int page_in_textures)
 	level_name = get_level_file(level_num);
 
 	if (!load_level(level_name))
-		Current_level_num=level_num;
+	{
+		Current_level_num = level_num;
+#ifdef RT_DX12
+		// Unload the previous level acceleration structure, if there is any
+		RT_UnloadLevel();
+		// Load the new level and create the acceleration structure
+		RT_LoadLevel();
+#endif
+	}
 
 	gr_use_palette_table( "palette.256" );
 

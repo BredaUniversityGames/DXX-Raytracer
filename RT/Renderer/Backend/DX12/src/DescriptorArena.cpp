@@ -99,13 +99,13 @@ DescriptorAllocation DescriptorArenaFreelist::Allocate(UINT count)
 	DescriptorBlock* previous_freeblock = nullptr;
 	DescriptorBlock* freeblock = m_current_block;
 
-	while (m_current_block != nullptr)
+	while (freeblock != nullptr)
 	{
-		RT_ASSERT(m_current_block != m_current_block->next);
+		RT_ASSERT(freeblock != freeblock->next);
 		if (count > freeblock->descriptor_count)
 		{
 			previous_freeblock = freeblock;
-			freeblock->next = previous_freeblock;
+			freeblock = freeblock->next;
 			continue;
 		}
 

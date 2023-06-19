@@ -9,7 +9,7 @@
 #include "Core/MemoryScope.hpp"
 #include "Core/String.h"
 
-static void ConfigError(RT_Config *cfg, char *error)
+static inline void ConfigError(RT_Config *cfg, char *error)
 {
 	RT_StringNode *error_node = RT_ArenaAllocStruct(cfg->arena, RT_StringNode);
 	error_node->string.count = strlen(error); // booo...
@@ -17,215 +17,11 @@ static void ConfigError(RT_Config *cfg, char *error)
 	RT_SLL_PUSH(cfg->first_error, error_node);
 }
 
-typedef enum RT_ConfigTokenKind
-{
-	/* ascii ... */
-	RT_ConfigToken_Identifier = 128,
-	RT_ConfigToken_Number,
-	RT_ConfigToken_String,
-	RT_ConfigToken_Error,
-	RT_ConfigToken_EOF,
-} RT_ConfigTokenKind;
-
-typedef struct RT_ConfigToken
-{
-	RT_ConfigTokenKind kind;
-	RT_String string;
-} RT_ConfigToken;
-
-typedef struct RT_ConfigTokenizer
-{
-	char *start;
-	char *end;
-	char *at;
-
-	RT_ConfigToken token;
-	RT_Config *cfg;
-} RT_ConfigTokenizer;
-
-static void TokenizeError(RT_ConfigTokenizer *tok, const char *error)
-{
-	int line = 1;
-	
-	char *at = tok->start;
-	char *end = tok->end;
-
-	while (at < end)
-	{
-		if (*at++ == '\n')
-		{
-			line++;
-		}
-	}
-
-	ConfigError(tok->cfg, RT_ArenaPrintF(tok->cfg->arena, "line %d: %s", line, error));
-}
-
-static void SkipWhitespace(RT_ConfigTokenizer *tok)
-{
-	char *at = tok->at;
-	char *end = tok->end;
-
-	while (at < end)
-	{
-		switch (*at)
-		{
-			case '#':
-			{
-				while (at < end && *at != '\n') at++;
-			} break;
-
-			default:
-			{
-				if (!isspace(*at))
-					goto done;
-				at++;
-			} break;
-		}
-	}
-done:
-
-	tok->at = at; 
-	tok->end = end;
-}
-
-static bool NextToken(RT_ConfigTokenizer *tok)
-{
-	SkipWhitespace(tok);
-
-	char *at = tok->at;
-	char *end = tok->end;
-
-	char *token_start = tok->at;
-	tok->token.kind = RT_ConfigToken_EOF;
-
-	bool result = false;
-
-	if (at < end)
-	{
-		result = true;
-
-		tok->token.kind = RT_ConfigToken_Error;
-
-		char c = *at++;
-		switch (c)
-		{
-			case '=':
-			{
-				tok->token.kind = (RT_ConfigTokenKind)'=';
-			} break;
-
-			case '"':
-			{
-				tok->token.kind = RT_ConfigToken_String;
-				while (at < end && *at != '"')
-				{
-					if (*at == '\n')
-					{
-						TokenizeError(tok, "Unterminated string (newline).");
-						break;
-					}
-					at++;
-				}
-
-				if (at[-1] != '"')
-					TokenizeError(tok, "Unterminated string (eof).");
-			} break;
-
-			case '0':
-			case '1': case '2': case '3':
-			case '4': case '5': case '6':
-			case '7': case '8': case '9':
-			{
-				tok->token.kind = RT_ConfigToken_Number;
-
-				// NOTE: fairly unrobust float parsing
-				while (at < end && isalnum(*at)) at++;
-				if (*at == '.') at++;
-				while (at < end && isalnum(*at)) at++;
-				if (*at == 'f') at++;
-			} break;
-
-			default:
-			{
-				if (isalpha(c) || c == '_')
-				{
-					tok->token.kind = RT_ConfigToken_Identifier;
-					while (at < end && isalnum(*at) || *at == '_') at++;
-				}
-			} break;
-		}
-	}
-
-	char *token_end = at;
-
-	tok->token.string.bytes = token_start;
-	tok->token.string.count = token_end - token_start;
-
-	tok->at = at;
-	tok->end = end;
-
-	return result;
-}
-
-static bool ExpectKey(RT_ConfigTokenizer *tok, RT_ConfigToken *token)
-{
-	if (tok->token.kind != RT_ConfigToken_Identifier)
-	{
-		TokenizeError(tok, "Expected key.");
-		return false;
-	}
-
-	*token = tok->token;
-	NextToken(tok);
-
-	return true;
-}
-
-static bool ExpectOperator(RT_ConfigTokenizer *tok, char op, RT_ConfigToken *token)
-{
-	if (tok->token.kind != op)
-	{
-		TokenizeError(tok, RT_ArenaPrintF(tok->cfg->arena, "Expected character '%c' after key.", op));
-		return false;
-	}
-
-	*token = tok->token;
-	NextToken(tok);
-
-	return true;
-}
-
-static bool ExpectValue(RT_ConfigTokenizer *tok, RT_ConfigToken *token)
-{
-	if (tok->token.kind != RT_ConfigToken_Identifier &&
-		tok->token.kind != RT_ConfigToken_String &&
-		tok->token.kind != RT_ConfigToken_Number)
-	{
-		TokenizeError(tok, "Expected valid value.");
-		return false;
-	}
-
-	*token = tok->token;
-	NextToken(tok);
-
-	return true;
-}
-
-static void InitTokenizer(RT_ConfigTokenizer *tok, RT_Config *cfg, RT_String string)
-{
-	tok->start = string.bytes;
-	tok->at = tok->start;
-	tok->end = tok->start + string.count;
-	tok->cfg = cfg;
-
-	NextToken(tok);
-}
-
 void RT_InitializeConfig(RT_Config *cfg, RT_Arena *arena)
 {
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->arena = arena;
+	cfg->last_modified_time = RT_GetHighResTime().value;
 }
 
 bool RT_DeserializeConfigFromFile(RT_Config *cfg, const char *file_name)
@@ -264,25 +60,26 @@ bool RT_DeserializeConfigFromFile(RT_Config *cfg, const char *file_name)
 
 void RT_DeserializeConfigFromString(RT_Config *cfg, RT_String string)
 {
-	RT_ConfigTokenizer tok = {0};
-	InitTokenizer(&tok, cfg, string);
-
-	while (tok.token.kind != RT_ConfigToken_EOF)
+	while (string.count > 0)
 	{
-		RT_ConfigToken token;
+		RT_String line;
+		string = RT_StringSplitLine(string, &line);
 
-		if (!ExpectKey(&tok, &token))
-			break;
+		line = RT_StringTrim(line);
 
-		RT_String key = token.string;
+		if (line.count > 0 && line.bytes[0] == '#')
+			continue;
 
-		if (!ExpectOperator(&tok, '=', &token))
-			break;
+		RT_String key;
+		line = RT_StringSplitAroundChar(line, '=', &key);
 
-		if (!ExpectValue(&tok, &token))
-			break;
+		key = RT_StringTrim(key);
 
-		RT_String value = token.string;
+		RT_String value;
+		line = RT_StringSplitAroundChar(line, '#', &value);
+
+		value = RT_StringTrim(value);
+		value = RT_StringUnquoteString(value);
 
 		RT_ConfigWriteString(cfg, key, value);
 	}
@@ -322,7 +119,15 @@ RT_ConfigKeyValue *RT_ConfigFindOrCreateKeyValue(RT_Config *cfg, RT_String key)
 
 	if (!kv)
 	{
-		kv = RT_ArenaAllocStruct(cfg->arena, RT_ConfigKeyValue);
+		if (!cfg->first_free_key_value)
+		{
+			cfg->first_free_key_value = RT_ArenaAllocStructNoZero(cfg->arena, RT_ConfigKeyValue);
+			cfg->first_free_key_value->next = NULL;
+		}
+
+		kv = RT_SLL_POP(cfg->first_free_key_value);
+		memset(kv, 0, sizeof(*kv));
+
 		kv->hash = hash;
 		kv->key_count = key.count;
 		if (kv->key_count > sizeof(kv->key) - 1)
@@ -406,11 +211,11 @@ bool RT_ConfigReadVec3(RT_Config *cfg, RT_String key, RT_Vec3 *value)
 	{
 		RT_ParseFloatResult parse_x = RT_ParseFloat(string);
 		string = RT_StringAdvance(string, parse_x.advance);
-		string = RT_StringAdvance(string, RT_StringFindChar(string, ','));
+		string = RT_StringAdvance(string, RT_StringFindChar(string, ',') + 1);
 		string = RT_StringAdvance(string, RT_StringFindFirstNonWhitespace(string));
 		RT_ParseFloatResult parse_y = RT_ParseFloat(string);
 		string = RT_StringAdvance(string, parse_y.advance);
-		string = RT_StringAdvance(string, RT_StringFindChar(string, ','));
+		string = RT_StringAdvance(string, RT_StringFindChar(string, ',') + 1);
 		string = RT_StringAdvance(string, RT_StringFindFirstNonWhitespace(string));
 		RT_ParseFloatResult parse_z = RT_ParseFloat(string);
 
@@ -441,24 +246,62 @@ void RT_ConfigWriteString(RT_Config *cfg, RT_String key, RT_String value)
 										(int)value.count, value.bytes, 255, value.bytes));
 	}
 	RT_CopyStringToBufferNullTerm(value, sizeof(kv->value), kv->value);
+
+	cfg->last_modified_time = RT_GetHighResTime().value;
 }
 
 void RT_ConfigWriteFloat(RT_Config *cfg, RT_String key, float value)
 {
 	RT_ConfigKeyValue *kv = RT_ConfigFindOrCreateKeyValue(cfg, key);
 	kv->value_count = snprintf(kv->value, sizeof(kv->value), "%f", value);
+	cfg->last_modified_time = RT_GetHighResTime().value;
 }
 
 void RT_ConfigWriteInt(RT_Config *cfg, RT_String key, int value)
 {
 	RT_ConfigKeyValue *kv = RT_ConfigFindOrCreateKeyValue(cfg, key);
 	kv->value_count = snprintf(kv->value, sizeof(kv->value), "%d", value);
+	cfg->last_modified_time = RT_GetHighResTime().value;
 }
 
 void RT_ConfigWriteVec3(RT_Config *cfg, RT_String key, RT_Vec3 value)
 {
 	RT_ConfigKeyValue *kv = RT_ConfigFindOrCreateKeyValue(cfg, key);
 	kv->value_count = snprintf(kv->value, sizeof(kv->value), "%f, %f, %f", value.x, value.y, value.z);
+	cfg->last_modified_time = RT_GetHighResTime().value;
+}
+
+bool RT_ConfigEraseKey(RT_Config *cfg, RT_String key)
+{
+	bool result = false;
+
+	uint32_t hash = RT_Murmur3(key.bytes, (uint32_t)key.count, 0xBEEFD00D);
+	uint32_t slot = hash % RT_ARRAY_COUNT(cfg->table);
+
+	for (RT_ConfigKeyValue **kv_at = &cfg->table[slot]; *kv_at; kv_at = &(*kv_at)->next)
+	{
+		RT_ConfigKeyValue *kv = *kv_at;
+
+		if (kv->hash == hash && 
+			strncmp(key.bytes, kv->key, RT_MIN(key.count, kv->key_count)) == 0)
+		{
+			*kv_at = (*kv_at)->next;
+
+			// Add kv to freelist
+			kv->next = cfg->first_free_key_value;
+			cfg->first_free_key_value = kv;
+
+			if (ALWAYS(cfg->kv_count > 0))
+				cfg->kv_count -= 1;
+
+			result = true;
+			cfg->last_modified_time = RT_GetHighResTime().value;
+
+			break;
+		}
+	}
+
+	return result;
 }
 
 RT_String RT_SerializeConfigToString(RT_Arena *arena, RT_Config *cfg)

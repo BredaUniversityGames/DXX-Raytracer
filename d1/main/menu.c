@@ -76,6 +76,11 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "ogl_init.h"
 #endif
 #include "logger.h"
+#ifdef RT_DX12
+#define RT_RENDER_SETTINGS_CONFIG_FILE "render_settings.vars"
+#include "Core/String.h"
+#include "Core/Config.h"
+#endif
 
 
 // Menu IDs...
@@ -1219,7 +1224,259 @@ void reticle_config()
 	PlayerCfg.ReticleSize = m[opt_ret_size].value;
 }
 
+#ifdef RT_DX12
+
+int RT_GetIntFromConfig(RT_Config* config, RT_String key) 
+{
+	int temp = 0;
+	ALWAYS(RT_ConfigReadInt(config, key, &temp));
+	return temp;
+}
+
+float RT_GetFloatFromConfig(RT_Config* config, RT_String key)
+{
+	float temp = 0.0;
+	ALWAYS(RT_ConfigReadFloat(config, key, &temp));
+	return temp;
+}
+
+RT_Vec3 RT_GetVec3FromConfig(RT_Config* config, RT_String key)
+{
+	RT_Vec3 temp = RT_Vec3FromScalar(0.f);
+	ALWAYS(RT_ConfigReadVec3(config, key, &temp));
+	return temp;
+}
+
+bool preset_changed = false;
+void preset_selection()
+{
+	newmenu_item* m = malloc(sizeof(newmenu_item) * 3); // Enough for text + 2 default presets
+	int nitems = 0;
+	int max_items = 3;
+	int opt_gr_preset_selection = 0;
+
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Preset:"; nitems++;
+	opt_gr_preset_selection = nitems;
+
+	char** rc = PHYSFS_enumerateFiles("assets/render_presets/");
+	char** file_itterator;
+
+	for (file_itterator = rc; *file_itterator != NULL; file_itterator++){
+
+		if (nitems + 1 > max_items){
+			newmenu_item* np = realloc(m, sizeof(newmenu_item) * ++max_items);
+			if (np != NULL){
+				m = np;
+			}
+		}
+		m[nitems].type = NM_TYPE_RADIO; m[nitems].text = *file_itterator; m[nitems].value = 0; m[nitems].group = 0; nitems++;
+	}
+
+	newmenu_do1( NULL, "Preset Selection", nitems, m, NULL, NULL, 1 );
+
+	RT_RendererIO* io = RT_GetRendererIO();
+	RT_Config* config = io->config;
+
+	// Apply preset
+	int index = 0;
+	for (file_itterator = rc; *file_itterator != NULL; file_itterator++){
+		if (m[opt_gr_preset_selection + index].value == 1){
+			
+			// Should be big enough, if not, increase the size;
+			char buff[255];
+			strcpy(buff, "assets/render_presets/");
+			strcat(buff, *file_itterator);
+
+			RT_DeserializeConfigFromFile(config, buff);
+			config->last_modified_time = RT_GetHighResTime().value;
+
+			preset_changed = true;
+			RT_LOGF(RT_LOGSERVERITY_INFO, "Applied Preset: %s", *file_itterator);
+			break;
+		}
+		index++;
+	}
+
+	PHYSFS_freeList(rc);
+	free(m);
+}
+
+int opt_gr_change_preset = 0;
+int raytrace_config_menuset(newmenu *menu, d_event *event, void *userdata)
+{
+	newmenu_item *items = newmenu_get_items(menu);
+	int citem = newmenu_get_citem(menu);
+
+	userdata = userdata;
+
+	switch (event->type)
+	{
+		case EVENT_NEWMENU_SELECTED:
+			if (citem == opt_gr_change_preset) {
+				preset_selection();
+				return 0;
+			}
+			
+			return 1;		// stay in menu
+			break;
+
+		default:
+			break;
+	}
+
+	return 0;
+}
+
+void raytrace_config()
+{
+	newmenu_item m[28];
+	int nitems = 0;
+
+	// Pathtracing ops
+	int opt_gr_enable_pathtracing = 0, opt_gr_enable_pbr, opt_gr_important_sample_brdf, opt_gr_use_oren_nayar_brdf, opt_gr_lighting_quality;
+
+	// Motion Blur ops
+	int opt_gr_motion_blur_quality = 0, opt_gr_motion_blur_strength;
+
+	// Bloom ops
+	int opt_gr_bloom_amount = 0, opt_gr_bloom_threshold;
+
+	// FOV
+	int opt_gr_fov = 0;
+
+	// Post Processing ops
+	int opt_gr_sharpen_amount = 0, opt_gr_gamma, opt_gr_vignette_scale, opt_gr_vignette_strength;
+
+	RT_RendererIO* io = RT_GetRendererIO();
+	RT_Config* config = io->config;
+
+	// --- PRESETS ---
+
+	preset_changed = false;
+	opt_gr_change_preset = nitems;
+	m[nitems].type = NM_TYPE_MENU; m[nitems].text = " Use Preset"; nitems++;
+
+	// --- PATHTRACING ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Pathtracing:"; nitems++;
+
+	opt_gr_enable_pathtracing = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable Pathtracing"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pathtracing")); nitems++;
+
+	opt_gr_enable_pbr = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable PBR"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pbr")); nitems++;
+
+	opt_gr_use_oren_nayar_brdf = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Use Oren-Nayar BRD"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("use_oren_nayar_brdf")); nitems++;
+
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Lighting Quality:"; nitems++;
+	opt_gr_lighting_quality = nitems;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Low"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Medium"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " High"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
+	int lighting_mode = RT_GetIntFromConfig(config, RT_StringLiteral("ris"));
+	m[opt_gr_lighting_quality+lighting_mode].value=1;
+
+	// --- MOTION BLUR ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Motion Blur:"; nitems++;
+	
+	opt_gr_motion_blur_quality = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Use motion blur"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("motion_blur_quality")); nitems++;
+
+	opt_gr_motion_blur_strength = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Motion blur strength"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("motion_blur_curve")) * 10.0); m[nitems].min_value = 0; m[nitems].max_value = 10; nitems++;
+
+	// --- BLOOM ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Bloom:"; nitems++;
+	
+	opt_gr_bloom_amount = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Amount"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("bloom_amount")) * 75.0f); m[nitems].min_value = 0; m[nitems].max_value = 25; nitems++;
+
+	// --- FOV ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "FOV:"; nitems++;
+
+	opt_gr_fov = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Amount"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("fov"))) - 60; m[nitems].min_value = 0; m[nitems].max_value = 30; nitems++;
+
+	// --- POST PROCESSING ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Post Processing:"; nitems++;
+
+	opt_gr_sharpen_amount = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Sharpen amount:"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("sharpen_amount")) * 2.f); m[nitems].min_value = 0; m[nitems].max_value = 8; nitems++;
+
+	opt_gr_gamma = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Gamma:"; m[nitems].value = (int)((RT_GetFloatFromConfig(config, RT_StringLiteral("gamma")) + 1.0f) * 10.f); m[nitems].min_value = 0; m[nitems].max_value = 20; nitems++;
+
+	opt_gr_vignette_scale = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Vignette Scale:"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("vignette_scale")) * 10.f); m[nitems].min_value = 5; m[nitems].max_value = 15; nitems++;
+
+	opt_gr_vignette_strength = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Vignette Strength:"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("vignette_strength")) * 10.f); m[nitems].min_value = 0; m[nitems].max_value = 10; nitems++;
+
+	newmenu_do1( NULL, "Raytracing Options", nitems, m, raytrace_config_menuset, NULL, 1 );
+
+	if (!preset_changed){
+		RT_ConfigWriteInt(config, RT_StringLiteral("enable_pathtracing"), m[opt_gr_enable_pathtracing].value);
+		RT_ConfigWriteInt(config, RT_StringLiteral("enable_pbr"), m[opt_gr_enable_pbr].value);
+		RT_ConfigWriteInt(config, RT_StringLiteral("use_oren_nayar_brdf"), m[opt_gr_use_oren_nayar_brdf].value);
+		for(int i = 0; i < 3; i++){
+			if(m[opt_gr_lighting_quality+i].value == 1){
+				lighting_mode = i;
+			}
+		}
+
+		switch(lighting_mode)
+		{
+			// LOW
+			case 0:
+			RT_ConfigWriteInt(config, RT_StringLiteral("svgf_max_hist_len_diff"), 16);
+			RT_ConfigWriteInt(config, RT_StringLiteral("svgf_max_hist_len_spec"), 16);
+			break;
+
+			// Medium
+			case 1:
+			RT_ConfigWriteInt(config, RT_StringLiteral("svgf_max_hist_len_diff"), 12);
+			RT_ConfigWriteInt(config, RT_StringLiteral("svgf_max_hist_len_spec"), 12);
+			break;
+
+			//High
+			case 2:
+			RT_ConfigWriteInt(config, RT_StringLiteral("svgf_max_hist_len_diff"), 4);
+			RT_ConfigWriteInt(config, RT_StringLiteral("svgf_max_hist_len_spec"), 4);
+			break;
+
+			default:
+			break;
+		}
+
+		RT_ConfigWriteInt(config, RT_StringLiteral("ris"), lighting_mode);
+
+		RT_ConfigWriteInt(config, RT_StringLiteral("motion_blur_quality"), m[opt_gr_motion_blur_quality].value);
+		RT_ConfigWriteFloat(config, RT_StringLiteral("motion_blur_curve"), m[opt_gr_motion_blur_strength].value/10.0f);
+
+		RT_ConfigWriteFloat(config, RT_StringLiteral("bloom_amount"), ((float)m[opt_gr_bloom_amount].value)/75.0f);
+
+		RT_ConfigWriteFloat(config, RT_StringLiteral("fov"), ((float)m[opt_gr_fov].value + 60));
+
+		RT_ConfigWriteFloat(config, RT_StringLiteral("sharpen_amount"), ((float)m[opt_gr_sharpen_amount].value)/2.0f);
+		RT_ConfigWriteFloat(config, RT_StringLiteral("gamma"), -1.0 + ((float)m[opt_gr_gamma].value/10.0f));
+		RT_ConfigWriteFloat(config, RT_StringLiteral("vignette_scale"), ((float)m[opt_gr_vignette_scale].value)/10.0f);
+		RT_ConfigWriteFloat(config, RT_StringLiteral("vignette_strength"), ((float)m[opt_gr_vignette_strength].value)/10.0f);
+
+		RT_SerializeConfigToFile(config, RT_RENDER_SETTINGS_CONFIG_FILE); 
+		config->last_modified_time = RT_GetHighResTime().value;
+	}
+}
+#endif
+
 int opt_gr_texfilt, opt_gr_brightness, opt_gr_reticlemenu, opt_gr_alphafx, opt_gr_dynlightcolor, opt_gr_vsync, opt_gr_multisample, opt_gr_fpsindi, opt_gr_disablecockpit;
+#ifdef RT_DX12
+int opt_gr_raytracemenu; opt_gr_enable_pathtracing;
+#endif
 int graphics_config_menuset(newmenu *menu, d_event *event, void *userdata)
 {
 	newmenu_item *items = newmenu_get_items(menu);
@@ -1234,6 +1491,9 @@ int graphics_config_menuset(newmenu *menu, d_event *event, void *userdata)
 #ifdef OGL
 				&& ogl_maxanisotropy <= 1.0
 #endif
+#ifdef RT_DX12
+				&& false
+#endif
 				)
 			{
 				nm_messagebox( TXT_ERROR, 1, TXT_OK, "Anisotropic Filtering not\nsupported by your hardware/driver.");
@@ -1247,6 +1507,11 @@ int graphics_config_menuset(newmenu *menu, d_event *event, void *userdata)
 		case EVENT_NEWMENU_SELECTED:
 			if (citem == opt_gr_reticlemenu)
 				reticle_config();
+#ifdef RT_DX12
+			if (citem == opt_gr_raytracemenu)
+				raytrace_config();
+#endif
+			
 			return 1;		// stay in menu
 			break;
 
@@ -1262,6 +1527,8 @@ void graphics_config()
 #ifdef OGL
 	newmenu_item m[16];
 	int i = 0;
+#elif RT_DX12
+	newmenu_item m[7];
 #else
 	newmenu_item m[6];
 #endif
@@ -1280,6 +1547,12 @@ void graphics_config()
 	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = TXT_BRIGHTNESS; m[nitems].value = gr_palette_get_gamma(); m[nitems].min_value = 0; m[nitems].max_value = 16; nitems++;
 	opt_gr_reticlemenu = nitems;
 	m[nitems].type = NM_TYPE_MENU; m[nitems].text = "Reticle Options"; nitems++;
+
+#ifdef RT_DX12
+	opt_gr_raytracemenu = nitems;
+	m[nitems].type = NM_TYPE_MENU; m[nitems].text = "Raytracing Options"; nitems++;
+#endif // RT_DX12
+
 #ifdef OGL
 	opt_gr_alphafx = nitems;
 	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Transparency Effects"; m[nitems].value = PlayerCfg.AlphaEffects; nitems++;
@@ -1322,7 +1595,6 @@ void graphics_config()
 	GameCfg.GammaLevel = m[opt_gr_brightness].value;
 	GameCfg.FPSIndicator = m[opt_gr_fpsindi].value;
 	PlayerCfg.DisableCockpit = m[opt_gr_disablecockpit].value; 
-
 
 	PlayerCfg.maxFps=atoi(framerate_string);
 

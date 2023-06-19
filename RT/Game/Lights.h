@@ -9,6 +9,11 @@
 bool g_pending_light_update;
 bool g_light_visual_debug;
 int  g_active_lights;
+// Light multiplier to tweak brightness of all the lights.
+// Because this might change in runtime (end of level sequence), the ImGui windows should make use of the g_light_multiplier_default.
+float g_light_multiplier;
+// Default light multiplier (not changed during runtime)
+float g_light_multiplier_default;
 
 typedef struct RT_LightDefinition
 {

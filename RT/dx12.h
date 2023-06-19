@@ -16,6 +16,7 @@ typedef struct _dx_texture
 void dx12_start_frame();
 void dx12_end_frame();
 
+void dx12_set_render_target(RT_ResourceHandle hud_texture);
 void dx12_urect(int left, int top, int right, int bot);
 
 void dx12_init_texture(grs_bitmap* bm);

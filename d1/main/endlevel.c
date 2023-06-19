@@ -66,6 +66,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "dx12.h"
 #include "RTutil.h"
 #include "Core/Arena.h"
+#include "Game/lights.h"
 #endif
 
 #ifdef EDITOR
@@ -314,6 +315,12 @@ void start_endlevel_sequence()
 	outside_mine = ext_expl_playing = 0;
 
 	flash_scale = f1_0;
+
+#ifdef RT_DX12
+	g_light_multiplier = g_light_multiplier_default; //Needs to be changed to RTconfig
+	g_pending_light_update = true;
+	RT_ResetLightEmission();
+#endif
 
 	//init_endlevel();
 
@@ -888,6 +895,13 @@ void render_external_scene(fix eye_offset)
 			if (! (p.p3_flags & PF_OVERFLOW)) {
 				Interpolation_method = 0;
 				//gr_bitmapm(f2i(p.p3_sx)-32,f2i(p.p3_sy)-32,satellite_bitmap);
+#ifdef RT_DX12
+				RT_Vec3 bot = RT_Vec3Fromvms_vector(&p.p3_vec);
+				RT_Vec3 top = RT_Vec3Fromvms_vector(&top_pnt.p3_vec);
+				RT_Vec3 mid = RT_Vec3Muls(RT_Vec3Add(bot, top), 0.5f);
+				//RT_RaytraceRod(RT_MATERIAL_SATELLITE, bot, top, f2fl(SATELLITE_WIDTH));
+				RT_RaytraceBillboard(RT_MATERIAL_SATELLITE, (RT_Vec2){ f2fl(SATELLITE_WIDTH), f2fl(SATELLITE_HEIGHT) }, mid, mid);
+#endif
 				g3_draw_rod_tmap(satellite_bitmap,&p,SATELLITE_WIDTH,&top_pnt,SATELLITE_WIDTH,lrgb);
 				Interpolation_method = save_im;
 			}
@@ -1060,6 +1074,10 @@ void render_endlevel_frame(fix eye_offset)
         .render_width_override = 0,
     };
     RT_BeginScene(&frame_settings);
+	RT_Light light = RT_MakeSphericalLight(
+		(RT_Vec3){ 10, 10, 10 },
+		(RT_Vec3){ f2fl(mine_ground_exit_point.x), f2fl(mine_ground_exit_point.y) + 100.f, f2fl(mine_ground_exit_point.z) }, 10.f);
+	RT_RaytraceSubmitLight(light);
 #endif
 
 	if (Endlevel_sequence < EL_OUTSIDE)
@@ -1439,6 +1457,7 @@ try_again:
                 // todo(lily): maybe make this compatible with external game textures instead of hardcoding?
                 // todo(lily): does this leak memory?
                 RT_ArenaMemoryScope(&g_thread_arena) {
+					// Load terrain bitmap
                     const uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, terrain_bitmap);
                     const RT_UploadTextureParams terrain_tex_params = {
                         .format = RT_TextureFormat_RGBA8,
@@ -1492,6 +1511,28 @@ try_again:
 				satellite_bitmap = &satellite_bm_instance;
 				gr_remap_bitmap_good( satellite_bitmap, pal, iff_transparent_color, -1);
 
+#ifdef RT_DX12
+				// todo(lily): maybe make this compatible with external game textures instead of hardcoding?
+				// todo(lily): does this leak memory?
+				RT_ArenaMemoryScope(&g_thread_arena) {
+					// Load satellite bitmap
+					const uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, satellite_bitmap);
+					const RT_UploadTextureParams terrain_tex_params = {
+						.format = RT_TextureFormat_RGBA8,
+						.height = terrain_bitmap->bm_h,
+						.width = terrain_bitmap->bm_w,
+						.name = "satellite texture",
+						.pixels = pixels,
+					};
+					const RT_Material material_definition = (RT_Material){
+						.albedo_texture = RT_UploadTexture(&terrain_tex_params),
+						.roughness = 1.0f,
+						.metalness = 0.0f,
+						.flags = RT_MaterialFlag_BlackbodyRadiator
+					};
+					RT_UpdateMaterial(RT_MATERIAL_SATELLITE, &material_definition);
+				}
+#endif
 				break;
 			}
 

@@ -6,6 +6,12 @@
 
 using namespace RT;
 
+#ifdef DO_EARLY_OUT_IN_COMPUTE_SHADERS
+#define EARLY_OUT if (pixel_pos.x >= g_global_cb.render_dim.x || pixel_pos.y >= g_global_cb.render_dim.y) return;
+#else
+#define EARLY_OUT
+#endif
+
 // ------------------------------------------------------------------
 // Preload stuff
 
@@ -71,7 +77,8 @@ static const float PI = 3.14159265359;
 #define LARGE_NUMBER 1000000000
 
 // @Volatile: Must match Renderer.h
-#define RT_TRIANGLE_HOLDS_MATERIAL_EDGE        (1 << 15)
+#define RT_TRIANGLE_HOLDS_MATERIAL_EDGE        (1u << 31)
+#define RT_TRIANGLE_HOLDS_MATERIAL_INDEX       (1u << 30)
 #define RT_TRIANGLE_MATERIAL_INSTANCE_OVERRIDE (0xFFFF)
 
 #define RT_RAY_T_MIN 0.001
@@ -99,6 +106,11 @@ struct RT_Triangle
 	uint color;
 	uint material_edge_index;
 };
+
+// @Volatile: Must match RT_MaterialFlags in Renderer.h
+#define RT_MaterialFlag_BlackbodyRadiator (0x1) // things like lava, basically just treats the albedo as an emissive map and skips all shading
+#define RT_MaterialFlag_NoCastingShadow   (0x2) // some materials/meshes we do not want to cast shadows (like the 3D cockpit)
+#define RT_MaterialFlag_Light             (0x4)
 
 // @Volatile: Must match RT_LightKind in ApiTypes.h
 #define RT_LightKind_Area_Sphere (0)
@@ -581,7 +593,11 @@ void GetMaterialIndicesAndOrient(uint material_edge_index, out uint material_ind
 	}
 	else
 	{
-		if (material_edge_index & RT_TRIANGLE_HOLDS_MATERIAL_EDGE)
+		if (material_edge_index & RT_TRIANGLE_HOLDS_MATERIAL_INDEX)
+		{
+			material_index = material_edge_index & ~RT_TRIANGLE_HOLDS_MATERIAL_INDEX;
+		}
+		else if (material_edge_index & RT_TRIANGLE_HOLDS_MATERIAL_EDGE)
 		{
 			material_index = GetMaterialIndex(material_edge_index & ~RT_TRIANGLE_HOLDS_MATERIAL_EDGE);
 		}
@@ -661,7 +677,7 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 	}
 }
 
-bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics)
+bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics, inout Material material)
 {
 	InstanceData instance_data = g_instance_data_buffer[instance_idx];
 	RT_Triangle hit_triangle = GetHitTriangle(instance_data.triangle_buffer_idx, primitive_idx);
@@ -678,7 +694,11 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 	}
 	else
 	{
-		if (material_edge_index & RT_TRIANGLE_HOLDS_MATERIAL_EDGE)
+		if (material_edge_index & RT_TRIANGLE_HOLDS_MATERIAL_INDEX)
+		{
+			material_index = material_edge_index & ~RT_TRIANGLE_HOLDS_MATERIAL_INDEX;
+		}
+		else if (material_edge_index & RT_TRIANGLE_HOLDS_MATERIAL_EDGE)
 		{
 			material_index = GetMaterialIndex(material_edge_index & ~RT_TRIANGLE_HOLDS_MATERIAL_EDGE);
 		}
@@ -723,7 +743,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 		}
 	}
 
-	Material material = g_materials[material_index];
+	material = g_materials[material_index];
 	Texture2D tex_albedo = GetTextureFromIndex(material.albedo_index);
 	float4 albedo = tex_albedo.SampleLevel(g_sampler_point_wrap, uv, 0);
 
@@ -871,6 +891,85 @@ float3 ReconstructPrevWorldPosFromGBuffer(uint2 dispatch_idx)
 	return world_p;*/
 
 	return ReconstructWorldPosition(g_global_cb.prev_view_inv, img_view_dir_prev[dispatch_idx].xyz, img_depth_prev[dispatch_idx]) * img_view_dir_prev[dispatch_idx].w;
+}
+
+RayDesc GetRayDesc(uint2 dispatch_idx, uint2 dispatch_dim)
+{
+	// Calculate UV
+	float2 dispatch_uv = (dispatch_idx + 0.5) / dispatch_dim;
+	dispatch_uv.y = 1.0f - dispatch_uv.y;
+	dispatch_uv.y -= g_global_cb.viewport_offset_y;
+
+	// Apply TAA jitter if TAA is enabled or reference mode is enabled
+	if (tweak.reference_mode || tweak.taa_enabled)
+	{
+		dispatch_uv += GetTAAJitter(dispatch_idx);
+	}
+
+	float3 curr_view_d = Unproject(g_global_cb.proj_inv, dispatch_uv, 1);
+	float3 curr_world_d = mul(g_global_cb.view_inv, float4(curr_view_d, 0)).xyz;
+	float3 curr_world_p = mul(g_global_cb.view_inv, float4(0, 0, 0, 1)).xyz;
+
+	// Set up geometry input for primary ray trace
+	RayDesc ray_desc = (RayDesc)0;
+	ray_desc.Origin = curr_world_p;
+	ray_desc.Direction = curr_world_d;
+	ray_desc.TMin = RT_RAY_T_MIN;
+	ray_desc.TMax = RT_RAY_T_MAX;
+
+	return ray_desc;
+}
+
+// Paper: https://jcgt.org/published/0010/01/01/
+// ray_dir is the ray direction in world space
+// ray_cone_radius is the cone radius on the intersection plane with the triangle
+// hit_bary are the barycentric coordinates at the intersection point
+// hit_position is the world space position of the intersection point
+// hit_normal is the interpolated normal at the intersection point
+// triangle_pos are the three triangle vertex positions in world space
+// triangle_uv are the three triangle vertex uv coordinates
+// tex_gradient1 and tex_gradient2 are the two texture gradients in the ray cone ellipse axes, which can be used in SampleGrad for anisotropic filtering
+void ComputeTextureGradientRayCone(float3 ray_dir, float ray_cone_radius, float2 hit_bary, float3 hit_position, float3 hit_normal,
+	float3 triangle_pos[3], float2 triangle_uv[3], out float2 tex_gradient1, out float2 tex_gradient2)
+{
+	float2 intersect_uv = GetHitAttribute(triangle_uv, hit_bary);
+
+	// Calculate both ellipse axes
+	float3 a1 = ray_dir - dot(hit_normal, ray_dir) * hit_normal;
+	float3 p1 = a1 - dot(ray_dir, a1) * ray_dir;
+	a1 *= ray_cone_radius / max(tweak.angle_cutoff, length(p1));
+
+	float3 a2 = cross(hit_normal, a1);
+	float3 p2 = a2 - dot(ray_dir, a2) * ray_dir;
+	a2 *= ray_cone_radius / max(tweak.angle_cutoff, length(p2));
+
+	// Compute texture coordinate gradients
+	float3 eP, delta = hit_position - triangle_pos[0];
+	float3 e1 = triangle_pos[1] - triangle_pos[0];
+	float3 e2 = triangle_pos[2] - triangle_pos[0];
+	float one_over_area_triangle = 1.0 / dot(hit_normal, cross(e1, e2));
+	
+	eP = delta + a1;
+	float u1 = dot(hit_normal, cross(eP, e2)) * one_over_area_triangle;
+	float v1 = dot(hit_normal, cross(e1, eP)) * one_over_area_triangle;
+	tex_gradient1 = (1.0 - u1 - v1) * triangle_uv[0] + u1 * triangle_uv[1] + v1 * triangle_uv[2] - intersect_uv;
+	
+	eP = delta + a2;
+	float u2 = dot(hit_normal, cross(eP, e2)) * one_over_area_triangle;
+	float v2 = dot(hit_normal, cross(e1, eP)) * one_over_area_triangle;
+	tex_gradient2 = (1.0 - u2 - v2) * triangle_uv[0] + u2 * triangle_uv[1] + v2 * triangle_uv[2] - intersect_uv;
+}
+
+// This function will sample a texture anisotropically, using ray cones to determine which mips will be sampled
+float4 SampleTextureAnisotropic(Texture2D tex, SamplerState samp, float2 tex_gradient1, float2 tex_gradient2, float2 uv)
+{
+	if (tweak.mip_bias != 0)
+	{
+		tex_gradient1 *= pow(2.0, tweak.mip_bias);
+		tex_gradient2 *= pow(2.0, tweak.mip_bias);
+	}
+
+	return tex.SampleGrad(samp, uv, tex_gradient1, tex_gradient2);
 }
 
 #endif /* COMMON_HLSL */

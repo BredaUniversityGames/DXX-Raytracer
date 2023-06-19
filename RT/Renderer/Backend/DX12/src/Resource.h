@@ -37,14 +37,18 @@ namespace RT
 	// -------------------------------------------------------------------------
 	// Textures
 
-	ID3D12Resource* CreateTexture(const wchar_t* name, DXGI_FORMAT format, D3D12_RESOURCE_FLAGS flags, size_t width, uint32_t height, uint16_t mips = 1, D3D12_CLEAR_VALUE* clear_value = nullptr);
+	ID3D12Resource* CreateTexture(RT_RESOURCE_TRACKER_DEBUG_PARAMS const wchar_t* name, const D3D12_RESOURCE_DESC* resource_desc, D3D12_CLEAR_VALUE* clear_value = nullptr);
+	ID3D12Resource* CreateTexture(RT_RESOURCE_TRACKER_DEBUG_PARAMS const wchar_t* name, DXGI_FORMAT format, D3D12_RESOURCE_FLAGS flags, size_t width, uint32_t height,
+		D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, uint16_t mips = 1, D3D12_CLEAR_VALUE* clear_value = nullptr);
+
+#define RT_CreateTexture(...) CreateTexture(RT_RESOURCE_TRACKER_DEBUG_ARGS __VA_ARGS__)
 
 	void CopyTexture(ID3D12GraphicsCommandList* command_list, ID3D12Resource* dst, ID3D12Resource* src);
 	void CopyTextureRegion(ID3D12GraphicsCommandList* command_list, ID3D12Resource* dst, uint32_t dst_x, uint32_t dst_y, uint32_t dst_z,
 		const D3D12_TEXTURE_COPY_LOCATION* src_loc, const D3D12_BOX* src_box);
 	void UploadTextureData(ID3D12Resource* dst, size_t row_pitch, size_t row_count, const void* data_ptr);
 
-	void CreateTextureSRV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, uint32_t mips = 1);
+	void CreateTextureSRV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, uint32_t mips = UINT32_MAX);
 	void CreateTextureUAV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format);
 	void CreateTextureRTV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format);
 	void CreateTextureDSV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format);

@@ -39,7 +39,7 @@
       "description": "Directx12_build",
       "inherits": "default",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo ",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "GRAPHICS_API": "DirectX12"
       }
     },

@@ -155,6 +155,8 @@ void DoSvgfFilterStep(int2 center_pos,
 [numthreads(GROUP_X, GROUP_Y, 1)]
 void DenoiseDirectCS(int2 pixel_pos : SV_DispatchThreadID)
 {
+	EARLY_OUT
+
 	float3 filtered_direct, filtered_spec;
 	float4 filtered_moments;
 	switch (g_denoise_cb.iteration)

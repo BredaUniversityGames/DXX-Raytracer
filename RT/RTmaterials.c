@@ -23,6 +23,8 @@
 
 #pragma pack(push, 8)
 
+// #define RT_DUMP_GAME_BITMAPS
+
 // NOTE(daniel): These warnings, the second one especially, are really useful when writing C.
 // They prevent you from accidentally using functions from headers you never included and such other hilarious jokes C gets up to.
 #pragma warning(error: 4431) // default-int (variables)
@@ -130,6 +132,11 @@ static void RT_ParseMaterialDefinitionFile(int bm_index, RT_Material *material, 
 
 			material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_BlackbodyRadiator, blackbody);
 
+			int no_casting_shadow = 0;
+			RT_ConfigReadInt(&cfg, RT_StringLiteral("no_casting_shadow"), &no_casting_shadow);
+
+			material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_NoCastingShadow, no_casting_shadow);
+
 			if (default_roughness) *default_roughness = !has_roughness;
 			if (default_metalness) *default_metalness = !has_metalness;
 		}
@@ -157,6 +164,19 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 
 				int w = 0, h = 0, c = 0;
 				unsigned char *pixels = RT_LoadImageFromDisk(&g_thread_arena, file, &w, &h, &c, bpp);
+
+				if (i == RT_MaterialTextureSlot_Emissive)
+				{
+					// Premultiply emissive by alpha to avoid white transparent backgrounds from showing...
+
+					uint32_t *at = (uint32_t *)pixels;
+					for (int i = 0; i < w*h; i++)
+					{
+						RT_Vec4 color = RT_UnpackRGBA(*at);
+						color.xyz = RT_Vec3Muls(color.xyz, color.w);
+						*at++ = RT_PackRGBA(color);
+					}
+				}
 
 				if (pixels)
 				{
@@ -277,14 +297,14 @@ void RT_InitAllBitmaps(void)
                     .name   = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
                     .format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
                 });
-			}
 
 #ifdef RT_DUMP_GAME_BITMAPS
-			{
-				const char *png_path = RT_ArenaPrintF(&g_thread_arena, "assets/texture_dump/%s.png", bitmap_name);
-				RT_WritePNGToDisk(png_path, bitmap->bm_w, bitmap->bm_h, 4, pixels, 4*bitmap->bm_w);
-			}
+				{
+					const char *png_path = RT_ArenaPrintF(&g_thread_arena, "assets/texture_dump/%s.png", bitmap_name);
+					RT_WritePNGToDisk(png_path, bitmap->bm_w, bitmap->bm_h, 4, pixels, 4*bitmap->bm_w);
+				}
 #endif
+			}
 
 			RT_UpdateMaterial(bm_index, material);
 		}
@@ -369,6 +389,8 @@ int RT_ReloadMaterials(void)
 				if (!RT_RESOURCE_HANDLE_VALID(material->textures[i]) || // always try to load textures if there weren't any for this kind
 					TextureFileIsOutdated(paths->textures[i]))
 				{
+					if (RT_RESOURCE_HANDLE_VALID(material->textures[i]))
+						RT_ReleaseTexture(material->textures[i]);
 					needs_reload |= (1u << i);
 				}
 			}

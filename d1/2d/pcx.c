@@ -26,6 +26,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "pcx.h"
 #include "physfsx.h"
 
+#ifdef RT_DX12
+#include "Core/Arena.h"
+#include "ImageReadWrite.h"
+#endif
 
 int pcx_encode_byte(ubyte byt, ubyte cnt, PHYSFS_file *fid);
 int pcx_encode_line(ubyte *inBuff, int inLen, PHYSFS_file *fp);
@@ -183,6 +187,29 @@ int bald_guy_load( char * filename, grs_bitmap * bmp,int bitmap_type ,ubyte * pa
 
 int pcx_read_bitmap( char * filename, grs_bitmap * bmp,int bitmap_type ,ubyte * palette )
 {
+#ifdef RT_DX12
+	// Just call me Butch Cassidy because this is a hijacking
+	char *ext = strchr(filename, '.');
+	if (strcmp(ext, ".png") == 0)
+	{
+		RT_ArenaMemoryScope(&g_thread_arena)
+		{
+			int w, h, c;
+			unsigned char *pixels = RT_LoadImageFromDisk(&g_thread_arena, filename, &w, &h, &c, 4);
+
+			if (!pixels)
+				return PCX_ERROR_OPENING;
+
+			// haha im going to hell
+			unsigned char *pixels_copy = d_malloc(w*h*sizeof(uint32_t));
+			memcpy(pixels_copy, pixels, w*h*sizeof(uint32_t));
+
+			gr_init_bitmap(bmp, BM_RGBA8, 0, 0, w, h, 4*w, pixels_copy);
+		}
+		return PCX_ERROR_NONE;
+	}
+#endif
+
 	PCXHeader header;
 	PHYSFS_file * PCXfile;
 	int i, row, col, count, xsize, ysize;

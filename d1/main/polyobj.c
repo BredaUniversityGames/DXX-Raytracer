@@ -51,7 +51,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifdef RT_DX12
 #include "RTgr.h"
 #include "RTmaterials.h"
-#include "Core/MiniMath.h"
 #endif //RT_DX12
 
 polymodel Polygon_models[MAX_POLYGON_MODELS];	// = {&bot11,&bot17,&robot_s2,&robot_b2,&bot11,&bot17,&robot_s2,&robot_b2};
@@ -574,7 +573,7 @@ void draw_polygon_model(_RT_DRAW_POLY vms_vector* pos, vms_matrix* orient, vms_a
 #else
 		//RT_DrawPolyModel(model_num, objNum, object_type, pos, orient);
 
-		RT_DrawPolyModelTree(model_num, objNum, object_type, pos, orient, anim_angles);
+		RT_DrawPolyModelTree(model_num, signature, object_type, pos, orient, anim_angles);
 #endif //RT_DX12
 	}
 	else {
@@ -604,9 +603,17 @@ void draw_polygon_model(_RT_DRAW_POLY vms_vector* pos, vms_matrix* orient, vms_a
 
 				// Combine them into one big matrix
 				RT_Mat4 combined_matrix = RT_Mat4Mul(offset_mat4, rotation_mat4);
-				RT_Mat4 prev_transform = g_rt_prev_submodel_transforms[objNum].transforms[i];
-				RT_DrawSubPolyModel(po->submodel[i], &combined_matrix, &prev_transform);
-				g_rt_prev_submodel_transforms[objNum].transforms[i] = combined_matrix;
+				// RT_Mat4 prev_transform = g_rt_prev_submodel_transforms[objNum].transforms[i];
+
+				RT_RenderKey key =
+				{
+					.signature      = signature,
+					.submodel_index = i,
+				};
+
+				RT_DrawSubPolyModel(po->submodel[i], &combined_matrix, key);
+
+				// g_rt_prev_submodel_transforms[objNum].transforms[i] = combined_matrix;
 #endif //RT_DX12
 
 				g3_done_instance();
@@ -747,11 +754,9 @@ void draw_model_picture(int mn, vms_angvec* orient_angles)
 
 	Assert(mn >= 0 && mn < N_polygon_models);
 
-
 	gr_clear_canvas(BM_XRGB(0, 0, 0));
 	g3_start_frame();
 	g3_set_view_matrix(&temp_pos, &temp_orient, 0x9000);
-
 
 #ifndef RT_DX12
 	if (Polygon_models[mn].rad != 0)
@@ -763,132 +768,12 @@ void draw_model_picture(int mn, vms_angvec* orient_angles)
 	draw_polygon_model(&temp_pos, &temp_orient, NULL, mn, 0, lrgb, NULL, NULL, OBJ_NONE);
 #else
 
-	// TODO(Justin): This needs to be fixed once we got blitting - enemy briefing
-	//if (Polygon_models[mn].rad != 0)
-	//	temp_pos.z = fixmuldiv(DEFAULT_VIEW_DIST, Polygon_models[mn].rad, BASE_MODEL_SIZE);
-	//else
-	//	temp_pos.z = DEFAULT_VIEW_DIST;
-	//vm_angles_2_matrix(&temp_orient, orient_angles);
-
-	//// Alright, let's create a struct that holds a raster triangle + calculated depth, for sorting later
-	//float tri_avg_depths[2048];
-	//RT_RasterTriVertex triangles[2048][3];
-	//int new_tri_list_size = 0;
-
-	//// For each triangle of the model
-	//for (int tri_i = 0; tri_i < meshVerticesRawHack[mn].triangle_count; ++tri_i) {
-	//	// Get the triangle - it should already be in view space
-	//	RT_Triangle* tri = &meshVerticesRawHack[mn].triangles[tri_i];
-
-	//	// Transform to NDC space - static variable so we don't have to recalculate the matrix but I'm too lazy to put it in a more sane spot
-	//	static RT_Mat4 proj_mat;
-	//	static bool proj_mat_inited = false;
-	//	if (!proj_mat_inited) {
-	//		proj_mat = RT_Mat4Perspective(90.f * (3.14159265359f / 180.f), 16.0f / 9.0f, 0.1, 500.f);
-	//	}
-
-	//	// Get the position
-	//	RT_Vec4 p0 = { tri->pos0.x, tri->pos0.y, tri->pos0.z, 1.0f };
-	//	RT_Vec4 p1 = { tri->pos1.x, tri->pos1.y, tri->pos1.z, 1.0f };
-	//	RT_Vec4 p2 = { tri->pos2.x, tri->pos2.y, tri->pos2.z, 1.0f };
-
-	//	// Apply rotation
-	//	RT_Mat4 rot_mat = RT_Mat4Fromvms_matrix(&temp_orient);
-	//	p0 = RT_Mat4TransformVec4(rot_mat, p0);
-	//	p1 = RT_Mat4TransformVec4(rot_mat, p1);
-	//	p2 = RT_Mat4TransformVec4(rot_mat, p2);
-
-	//	// Apply view
-	//	p0.z += f2fl(temp_pos.z);
-	//	p1.z += f2fl(temp_pos.z);
-	//	p2.z += f2fl(temp_pos.z);
-
-	//	// Perspective projection
-	//	p0 = RT_Mat4TransformVec4(proj_mat, p0);
-	//	p1 = RT_Mat4TransformVec4(proj_mat, p1);
-	//	p2 = RT_Mat4TransformVec4(proj_mat, p2);
-
-	//	// Perspective divide
-	//	p0.x /= p0.w;
-	//	p1.x /= p1.w;
-	//	p2.x /= p2.w;
-	//	p0.y /= p0.w;
-	//	p1.y /= p1.w;
-	//	p2.y /= p2.w;
-	//	p0.z /= p0.w;
-	//	p1.z /= p1.w;
-	//	p2.z /= p2.w;
-
-	//	// Move it over scuffedly
-	//	p0.x = p0.x * 2.5f + 0.2f;
-	//	p1.x = p1.x * 2.5f + 0.2f;
-	//	p2.x = p2.x * 2.5f + 0.2f;
-	//	p0.y = p0.y * 2.5f - 0.3f;
-	//	p1.y = p1.y * 2.5f - 0.3f;
-	//	p2.y = p2.y * 2.5f - 0.3f;
-
-	//	// Create vertex
-	//	RT_Vertex v0 = { p0.xyz, tri->uv0, tri->normal0, tri->tangent0.xyz, {0, 0, 0} };
-	//	RT_Vertex v1 = { p2.xyz, tri->uv2, tri->normal2, tri->tangent2.xyz, {0, 0, 0} };
-	//	RT_Vertex v2 = { p1.xyz, tri->uv1, tri->normal1, tri->tangent1.xyz, {0, 0, 0} };
-
-	//	// Create raster triangle from it
-	//	RT_RasterTriVertex raster_tri_v0 = { p0.xyz, v0.uv, {1,1,1,1}, tri->material_edge_index };
-	//	RT_RasterTriVertex raster_tri_v1 = { p1.xyz, v1.uv, {1,1,1,1}, tri->material_edge_index };
-	//	RT_RasterTriVertex raster_tri_v2 = { p2.xyz, v2.uv, {1,1,1,1}, tri->material_edge_index };
-	//	float avg_depth = v0.pos.z + v1.pos.z + v2.pos.z; // I would divide by 3 here but it's for sorting only, we don't care
-
-	//	// Depth culling
-	//	if (avg_depth < 0.0f || avg_depth > 3.0f) {
-	//		continue;
-	//	}
-
-	//	// Add it to the list
-	//	triangles[new_tri_list_size][0] = raster_tri_v0;
-	//	triangles[new_tri_list_size][1] = raster_tri_v1;
-	//	triangles[new_tri_list_size][2] = raster_tri_v2;
-	//	tri_avg_depths[new_tri_list_size] = avg_depth;
-
-	//	// Move to next entry
-	//	new_tri_list_size++;
-	//}
-
-	// Sort the triangles - bubble sort
-	//int curr_max = new_tri_list_size;
-	//while (--curr_max) {
-	//	// Loop over all unsorted elements
-	//	for (int i = 0; i < curr_max; ++i) {
-	//		// Swap triangles if this one pair's depths are the wrong way around
-	//		if (tri_avg_depths[i] > tri_avg_depths[i + 1]) {
-	//			// Swap depth
-	//			{
-	//				float tmp = tri_avg_depths[i];
-	//				tri_avg_depths[i] = tri_avg_depths[i + 1];
-	//				tri_avg_depths[i + 1] = tmp;
-	//			}
-	//			// Swap triangle
-	//			for (int j = 0; j < 3; ++j)
-	//			{
-	//				RT_RasterTriVertex tmp = triangles[i][j];
-	//				triangles[i][j] = triangles[i + 1][j];
-	//				triangles[i + 1][j] = tmp;
-	//			}
-	//		}
-	//	}
-	//}
-
-	// Note(Justin): This could be wrong, but I do not care, since we will replace this with raytraced models anyways
-	/*RT_RasterTrianglesParams raster_tri_params = { 0 };
-	raster_tri_params.texture_handle = g_rt_materials[triangles[0]->texture_index].albedo_texture;
-	raster_tri_params.num_vertices = new_tri_list_size;
-	raster_tri_params.vertices = triangles;
-
-	RT_RasterTriangles(&raster_tri_params, 1);*/
-	// Draw each triangle of the model
-	//for (size_t i = 0; i < new_tri_list_size; ++i) {
-	//	// Draw triangles
-	//	RT_RasterTriangle(materials[triangles[i][0].texture_index].albedo_texture, triangles[i]);
-	//}
+	if (Polygon_models[mn].rad != 0)
+		temp_pos.z = fixmuldiv(DEFAULT_VIEW_DIST, Polygon_models[mn].rad, BASE_MODEL_SIZE);
+	else
+		temp_pos.z = DEFAULT_VIEW_DIST;
+	vm_angles_2_matrix(&temp_orient, orient_angles);
+	draw_polygon_model(0, 2, &temp_pos, &temp_orient, NULL, mn, 0, lrgb, NULL, NULL, OBJ_NONE);
 #endif //RT_DX12
 
 	g3_end_frame();

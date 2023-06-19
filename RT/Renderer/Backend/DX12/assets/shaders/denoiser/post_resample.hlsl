@@ -21,6 +21,7 @@ void Preload(uint2 shared_pos, uint2 global_pos)
 void Denoise_PostResample(COMPUTE_ARGS)
 {
 	PRELOAD_INTO_SHARED
+	EARLY_OUT
 
 	// ------------------------------------------------------------------
 
@@ -61,27 +62,72 @@ void Denoise_PostResample(COMPUTE_ARGS)
 	float2 uv      = (float2(pixel_pos) + 0.5) / float2(g_global_cb.render_dim);
 	float2 uv_prev = uv + motion;
 
+	float3 curr_norm = DecodeNormalOctahedron(img_normal[pixel_pos].xy);
+	float3 curr_world = ReconstructWorldPosFromGBuffer(pixel_pos);
+
 	float3 diff_prev = diff_curr;
 	float3 spec_prev = spec_curr;
 	if (all(and(uv_prev >= 0, uv_prev < 1)))
 	{
-		if (tweak.diff_stabilize_sharp)
+#define BLEED_FIX 1
+#if BLEED_FIX
+		BilinearSamples samples;
+		GetBilinearSamples(float2(pixel_pos) + motion*g_global_cb.render_dim, samples);
+
+		float4 geom_weights = 1;
+		for (int i = 0; i < 4; i++)
 		{
-			diff_prev = max(0, SampleTextureCatmullRom(tex_diff_stable_hist, g_sampler_linear_clamp, uv_prev, g_global_cb.render_dim).rgb);
-		}
-		else
-		{
-			diff_prev = tex_diff_stable_hist.SampleLevel(g_sampler_linear_clamp, uv_prev, 0).rgb;
+			int2  pos = samples.positions[i];
+			float w   = samples.weights  [i];
+
+			float3 world = ReconstructPrevWorldPosFromGBuffer(pos);
+
+			float plane_distance = abs(dot(curr_norm, curr_world) - dot(curr_norm, world));
+			float disocclusion_threshold = 1.0f;
+
+			geom_weights[i] = plane_distance < disocclusion_threshold;
 		}
 
-		if (tweak.spec_stabilize_sharp)
+		float geom_sum = dot(geom_weights, 1);
+		if (geom_sum > 0.001)
 		{
-			spec_prev = max(0, SampleTextureCatmullRom(tex_spec_stable_hist, g_sampler_linear_clamp, uv_prev, g_global_cb.render_dim).rgb);
+			if (geom_sum < 4.0)
+			{
+				for (int i = 0; i < 4; i++)
+				{
+					int2  pos = samples.positions[i];
+					float w   = samples.weights  [i];
+					w *= geom_weights[i];
+					diff_prev += w*tex_diff_stable_hist.Load(uint3(pos, 0)).rgb;
+					spec_prev += w*tex_spec_stable_hist.Load(uint3(pos, 0)).rgb;
+				}
+				diff_prev *= rcp(geom_sum);
+				spec_prev *= rcp(geom_sum);
+			}
+			else
+			{
+#endif
+				if (tweak.diff_stabilize_sharp)
+				{
+					diff_prev = max(0, SampleTextureCatmullRom(tex_diff_stable_hist, g_sampler_linear_clamp, uv_prev, g_global_cb.render_dim).rgb);
+				}
+				else
+				{
+					diff_prev = tex_diff_stable_hist.SampleLevel(g_sampler_linear_clamp, uv_prev, 0).rgb;
+				}
+
+				if (tweak.spec_stabilize_sharp)
+				{
+					spec_prev = max(0, SampleTextureCatmullRom(tex_spec_stable_hist, g_sampler_linear_clamp, uv_prev, g_global_cb.render_dim).rgb);
+				}
+				else
+				{
+					spec_prev = tex_spec_stable_hist.SampleLevel(g_sampler_linear_clamp, uv_prev, 0).rgb;
+				}
+#if BLEED_FIX
+			}
 		}
-		else
-		{
-			spec_prev = tex_spec_stable_hist.SampleLevel(g_sampler_linear_clamp, uv_prev, 0).rgb;
-		}
+#endif
 	}
 
 	float3 diff_sigma = max(0, sqrt(diff_m2 - diff_m1*diff_m1));

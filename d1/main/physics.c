@@ -32,6 +32,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "laser.h"
 #include "logger.h"
 
+#ifdef RT_DX12
+#include "RTgr.h"
+#endif
+
 #include <math.h>
 
 //Global variables for physics system
@@ -476,15 +480,21 @@ void do_physics_sim(object *obj)
 
 #ifdef EXTRA_DEBUG
 	//check for correct object segment
-	if(!get_seg_masks(&obj->pos, obj->segnum, 0, __FILE__, __LINE__).centermask == 0)
+
+	if (!get_seg_masks(&obj->pos, obj->segnum, 0, __FILE__, __LINE__).centermask == 0 
+#ifdef RT_DX12
+		&& !g_rt_free_cam_info.g_free_cam_enabled && !g_rt_free_cam_info.g_free_cam_clipping_enabled
+#endif
+		)
 	{
 		if (!update_object_seg(obj)) {
 			if (!(Game_mode & GM_MULTI))
 				Int3();
-			compute_segment_center(&obj->pos,&Segments[obj->segnum]);
+			compute_segment_center(&obj->pos, &Segments[obj->segnum]);
 			obj->pos.x += objnum;
 		}
 	}
+
 #endif
 
 	start_pos = obj->pos;
@@ -546,6 +556,7 @@ void do_physics_sim(object *obj)
 				total_drag = fixmul(total_drag,f1_0-fixmul(k,drag));
 
 				vm_vec_scale(&obj->mtype.phys_info.velocity,total_drag);
+
 			}
 		} else if (STRATEGY == GEOMETRIC_DRAG) {
 			if (obj->mtype.phys_info.flags & PF_USES_THRUST) {
@@ -602,13 +613,20 @@ void do_physics_sim(object *obj)
 
 		// The rest of this function is collision stuff
 		// Observers just fly free
-		
 		if(Game_mode & GM_OBSERVER && 
 			((obj->id == Player_num) ||
-			((Game_mode & GM_MULTI_COOP) && (obj - Objects == 7))) ) {
+			((Game_mode & GM_MULTI_COOP) && (obj - Objects == 7)))) {
 			obj->pos = new_pos;
 			return;
 		}
+
+#ifdef RT_DX12
+		//This needs to be checked seperate for the ifdef
+		if (g_rt_free_cam_info.g_free_cam_enabled && g_rt_free_cam_info.g_free_cam_clipping_enabled) {
+			obj->pos = new_pos;
+			return;
+		}
+#endif
 		
 		ignore_obj_list[n_ignore_objs] = -1;
 
@@ -625,6 +643,7 @@ void do_physics_sim(object *obj)
 
 		if (obj->type == OBJ_PLAYER)
 			fq.flags |= FQ_GET_SEGLIST;
+
 
 		fate = find_vector_intersection(&fq,&hit_info);
 		// if(fate != HIT_NONE) {
@@ -741,7 +760,6 @@ void do_physics_sim(object *obj)
 				}
 			}
 		}
-
 
 		switch( fate )		{
 

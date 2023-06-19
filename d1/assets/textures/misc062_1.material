@@ -1,0 +1,3 @@
+albedo_texture    = misc062_basecolor.png
+metalness_texture = misc062_metallic.png
+roughness_texture = misc062_roughness.png

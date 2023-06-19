@@ -21,6 +21,9 @@
 #include <DirectXMath.h>
 using namespace DirectX;
 
+#define RT_RENDER_SETTINGS_CONFIG_FILE "render_settings.vars"
+#define RT_DEFAULT_RENDER_SETTINGS_CONFIG_FILE "assets/render_presets/default.vars"
+
 // ------------------------------------------------------------------
 // These global arrays are directly accessible through calls in
 // Renderer.h and mirrored to the GPU per-frame (see Renderer.h for 
@@ -115,7 +118,37 @@ void RT::ResourceTransitions(ID3D12GraphicsCommandList* list, size_t num_resourc
 namespace
 {
 
+	struct ShaderDefineSettings
+	{
+		uint64_t last_modified_time;
+
+		bool early_out_of_bounds = true;
+	};
+
+	ShaderDefineSettings g_shader_defines;
+
+	void WriteTweakvarsToIOConfig();
+	void UpdateTweakvarsFromIOConfig();
+	void ResetTweakvarsToDefault();
+
 	void InitTweakVars()
+	{
+		g_d3d.io.config = RT_ArenaAllocStructNoZero(g_d3d.arena, RT_Config);
+		RT_InitializeConfig(g_d3d.io.config, g_d3d.arena);
+
+		ResetTweakvarsToDefault();
+		WriteTweakvarsToIOConfig();
+
+		RT_InitializeConfig(&g_d3d.global_shader_defines, g_d3d.arena);
+		RT_ConfigWriteString(&g_d3d.global_shader_defines, RT_StringLiteral("DO_EARLY_OUT_IN_COMPUTE_SHADERS"), RT_StringLiteral("1"));
+
+		if (RT_DeserializeConfigFromFile(g_d3d.io.config, RT_RENDER_SETTINGS_CONFIG_FILE))
+		{
+			UpdateTweakvarsFromIOConfig();
+		}
+	}
+
+	void ResetTweakvarsToDefault()
 	{
 		#define TWEAK_CATEGORY_BEGIN(name)
 		#define TWEAK_CATEGORY_END()
@@ -134,6 +167,59 @@ namespace
 		#undef TWEAK_FLOAT
 		#undef TWEAK_COLOR
 		#undef TWEAK_OPTIONS
+	}
+
+	void WriteTweakvarsToIOConfig()
+	{
+		RT_Config *cfg = g_d3d.io.config;
+
+		#define TWEAK_CATEGORY_BEGIN(name)
+		#define TWEAK_CATEGORY_END()
+		#define TWEAK_BOOL(name, var, value) RT_ConfigWriteInt(cfg, RT_StringLiteral(#var), tweak_vars.var);
+		#define TWEAK_INT(name, var, value, min, max) RT_ConfigWriteInt(cfg, RT_StringLiteral(#var), tweak_vars.var);
+		#define TWEAK_FLOAT(name, var, value, min, max) RT_ConfigWriteFloat(cfg, RT_StringLiteral(#var), tweak_vars.var);
+		#define TWEAK_COLOR(name, var, value) RT_ConfigWriteVec3(cfg, RT_StringLiteral(#var), tweak_vars.var.xyz);
+		#define TWEAK_OPTIONS(name, var, value, ...) RT_ConfigWriteInt(cfg, RT_StringLiteral(#var), tweak_vars.var);
+
+		#include "shared_tweakvars.hlsl.h"
+
+		#undef TWEAK_CATEGORY_BEGIN
+		#undef TWEAK_CATEGORY_END
+		#undef TWEAK_BOOL
+		#undef TWEAK_INT
+		#undef TWEAK_FLOAT
+		#undef TWEAK_COLOR
+		#undef TWEAK_OPTIONS
+
+		g_d3d.tweakvars_config_last_modified_time = cfg->last_modified_time;
+	}
+
+	void UpdateTweakvarsFromIOConfig()
+	{
+		if (g_d3d.tweakvars_config_last_modified_time != g_d3d.io.config->last_modified_time)
+		{
+			g_d3d.tweakvars_config_last_modified_time = g_d3d.io.config->last_modified_time;
+
+			RT_Config *cfg = g_d3d.io.config;
+
+			#define TWEAK_CATEGORY_BEGIN(name)
+			#define TWEAK_CATEGORY_END() 
+			#define TWEAK_BOOL(name, var, value) { int result = tweak_vars.var; RT_ConfigReadInt(cfg, RT_StringLiteral(#var), &result); tweak_vars.var = result; }
+			#define TWEAK_INT(name, var, value, min, max) RT_ConfigReadInt(cfg, RT_StringLiteral(#var), &tweak_vars.var);
+			#define TWEAK_FLOAT(name, var, value, min, max) RT_ConfigReadFloat(cfg, RT_StringLiteral(#var), &tweak_vars.var);
+			#define TWEAK_COLOR(name, var, value) { RT_ConfigReadVec3(cfg, RT_StringLiteral(#var), &tweak_vars.var.xyz); tweak_vars.var.w = 1.0f; }
+			#define TWEAK_OPTIONS(name, var, value, ...) RT_ConfigReadInt(cfg, RT_StringLiteral(#var), &tweak_vars.var);
+
+			#include "shared_tweakvars.hlsl.h"
+
+			#undef TWEAK_CATEGORY_BEGIN
+			#undef TWEAK_CATEGORY_END
+			#undef TWEAK_BOOL
+			#undef TWEAK_INT
+			#undef TWEAK_FLOAT
+			#undef TWEAK_COLOR
+			#undef TWEAK_OPTIONS
+		}
 	}
 
 	float Halton(int i, int base)
@@ -202,7 +288,7 @@ namespace
 		return result;
 	}
 
-	IDxcBlob *CompileShader(const wchar_t *file_name, const wchar_t *entry_point, const wchar_t *target_profile, uint32_t num_defines = 0, const wchar_t **defines = nullptr)
+	IDxcBlob *CompileShader(const wchar_t *file_name, const wchar_t *entry_point, const wchar_t *target_profile, uint32_t num_defines = 0, const DxcDefine *defines = nullptr)
 	{
         HRESULT hr;
 
@@ -229,16 +315,9 @@ namespace
 		};
 
 		IDxcOperationResult *result;
-		DxcDefine* dxc_defines = RT_ArenaAllocArray(&g_thread_arena, num_defines, DxcDefine);
-		for (size_t i = 0; i < num_defines; ++i)
-		{
-			dxc_defines[i].Name = (LPCWSTR)defines[i];
-			dxc_defines[i].Value = (LPCWSTR)defines[i];
-		}
-
 		DX_CALL(g_d3d.dxc_compiler->Compile(shader_text, file_name, entry_point, target_profile,
 											arguments, RT_ARRAY_COUNT(arguments),
-											dxc_defines, num_defines,
+											defines, num_defines,
 											g_d3d.dxc_include_handler, &result));
 		DeferRelease(result);
 
@@ -260,9 +339,23 @@ namespace
 		return blob;
 	}
 
-	ID3D12PipelineState *CreateComputePipeline(const wchar_t *source, const wchar_t *entry_point)
+	ID3D12PipelineState *CreateComputePipeline(const wchar_t *source, const wchar_t *entry_point, ID3D12RootSignature* root_sig)
 	{
-		IDxcBlob *blob = CompileShader(source, entry_point, L"cs_6_3");
+		MemoryScope temp;
+
+		size_t defines_count = g_d3d.global_shader_defines.kv_count;
+		DxcDefine *defines = RT_ArenaAllocArrayNoZero(temp, defines_count, DxcDefine);
+
+		for (RT_ConfigIterator it = RT_IterateConfig(&g_d3d.global_shader_defines);
+			 RT_ConfigIterValid(&it);
+			 RT_ConfigIterNext(&it))
+		{
+			RT_ConfigKeyValue *kv = it.at;
+			defines[it.index].Name  = Utf16FromUtf8(temp, kv->key);
+			defines[it.index].Value = Utf16FromUtf8(temp, kv->value);
+		}
+
+		IDxcBlob *blob = CompileShader(source, entry_point, L"cs_6_3", (UINT)defines_count, defines);
 
 		if (!blob)
 			return nullptr;
@@ -274,7 +367,7 @@ namespace
 		};
 
 		D3D12_COMPUTE_PIPELINE_STATE_DESC pipeline_desc = {};
-		pipeline_desc.pRootSignature = g_d3d.global_root_sig;
+		pipeline_desc.pRootSignature = root_sig;
 		pipeline_desc.CS             = bytecode;
 
 		ID3D12PipelineState *result = nullptr;
@@ -432,6 +525,8 @@ namespace
 
     void CreateCommandQueues()
     {
+		// TODO(Justin): This is a relic from the past. Why does this call new? Idk
+		// Also we want to refactor command lists and have multiple command queues potentially, but we might not end up having time for this.
         g_d3d.command_queue_direct = new CommandQueue(D3D12_COMMAND_LIST_TYPE_DIRECT);
     }
 
@@ -483,9 +578,10 @@ namespace
 
     void CreateDescriptorHeaps()
     {
-		g_d3d.rtv.Init(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
+		// Since any texture could - in theory - be used as a render target, we will mimic the size of the CBV_SRV_UAV heap for the RTV heap
+		g_d3d.rtv.Init(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, CBV_SRV_UAV_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
 		g_d3d.dsv.Init(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
-		g_d3d.cbv_srv_uav.Init(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 4096, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
+		g_d3d.cbv_srv_uav.Init(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, CBV_SRV_UAV_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
 		g_d3d.cbv_srv_uav_staging.Init(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, D3D12GlobalDescriptors_COUNT*BACK_BUFFER_COUNT, D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
     }
 
@@ -549,14 +645,14 @@ namespace
 			D3D12_DESCRIPTOR_RANGE1 bindless_ranges[2] = {};
 
 			bindless_ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-			bindless_ranges[0].NumDescriptors = 4096;
+			bindless_ranges[0].NumDescriptors = CBV_SRV_UAV_HEAP_SIZE;
 			bindless_ranges[0].OffsetInDescriptorsFromTableStart = 0;
 			bindless_ranges[0].BaseShaderRegister = 0;
 			bindless_ranges[0].RegisterSpace = 3;
 			bindless_ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE|D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE;
 
 			bindless_ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-			bindless_ranges[1].NumDescriptors = 4096;
+			bindless_ranges[1].NumDescriptors = CBV_SRV_UAV_HEAP_SIZE;
 			bindless_ranges[1].OffsetInDescriptorsFromTableStart = 0;
 			bindless_ranges[1].BaseShaderRegister = 0;
 			bindless_ranges[1].RegisterSpace = 4;
@@ -585,7 +681,7 @@ namespace
 			static_samplers[0].RegisterSpace = 0;
 			static_samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-			static_samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+			static_samplers[1].Filter = D3D12_FILTER_MIN_MAG_POINT_MIP_LINEAR;
 			static_samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 			static_samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 			static_samplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -1119,7 +1215,7 @@ namespace
 			graphics_state_desc.pRootSignature = g_d3d_raster.tri_root_sig;
 
 			DX_CALL(g_d3d.device->CreateGraphicsPipelineState(&graphics_state_desc, IID_PPV_ARGS(&g_d3d_raster.tri_state)));
-			g_d3d_raster.tri_state->SetName(L"Raster triangle state");
+			g_d3d_raster.tri_state->SetName(L"Raster triangle state (Non-SRGB render target)");
 
 			SafeRelease(vertex_shader_blob);
 			SafeRelease(pixel_shader_blob);
@@ -1274,9 +1370,9 @@ namespace
 			SafeRelease(vertex_shader_blob);
 			SafeRelease(pixel_shader_blob);
 
-			const wchar_t* defines[1] =
+			const DxcDefine defines[1] =
 			{
-				L"DEPTH_ENABLED"
+				{ L"DEPTH_ENABLED" },
 			};
 
 			vertex_shader_blob = CompileShader(L"assets/shaders/raster_line_world.hlsl", L"VertexShaderEntry", L"vs_6_3", RT_ARRAY_COUNT(defines), defines);
@@ -1304,6 +1400,97 @@ namespace
 			g_d3d_raster.debug_line_vertex_buf_ptr = reinterpret_cast<RT_RasterLineVertex*>(debug_line_vertex_buf_ptr);
 		}
 
+		{
+			// -------------------------------------------------------------------------------------------------
+			// Create raster blit root signature and pipeline state
+
+			D3D12_DESCRIPTOR_RANGE1 ranges[1] = {};
+			ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+			ranges[0].BaseShaderRegister = 0;
+			ranges[0].RegisterSpace = 0;
+			ranges[0].NumDescriptors = 1;
+			ranges[0].OffsetInDescriptorsFromTableStart = 0;
+			ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_NONE;
+
+			D3D12_ROOT_PARAMETER1 root_parameters[2] = {};
+			root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+			root_parameters[0].Constants.Num32BitValues = 5;
+			root_parameters[0].Constants.ShaderRegister = 0;
+			root_parameters[0].Constants.RegisterSpace = 0;
+			root_parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+			root_parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE	;
+			root_parameters[1].DescriptorTable.NumDescriptorRanges = 1;
+			root_parameters[1].DescriptorTable.pDescriptorRanges = ranges;
+			root_parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+			
+			D3D12_STATIC_SAMPLER_DESC static_samplers[1] = {};
+			static_samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+			static_samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+			static_samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+			static_samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+			static_samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+			static_samplers[0].Filter = D3D12_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR;
+			static_samplers[0].MaxAnisotropy = 0;
+			static_samplers[0].MinLOD = 0;
+			static_samplers[0].MaxLOD = 0;
+			static_samplers[0].MipLODBias = 0;
+			static_samplers[0].ShaderRegister = 0;
+			static_samplers[0].RegisterSpace = 0;
+			static_samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+			D3D12_VERSIONED_ROOT_SIGNATURE_DESC graphics_root_sig_desc = {};
+			graphics_root_sig_desc.Desc_1_1.NumParameters = RT_ARRAY_COUNT(root_parameters);
+			graphics_root_sig_desc.Desc_1_1.pParameters = root_parameters;
+			graphics_root_sig_desc.Desc_1_1.NumStaticSamplers = RT_ARRAY_COUNT(static_samplers);
+			graphics_root_sig_desc.Desc_1_1.pStaticSamplers = static_samplers;
+			graphics_root_sig_desc.Desc_1_1.Flags =
+				D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+				D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+				D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+				D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+			graphics_root_sig_desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+			ID3DBlob* serialized_root_sig = CompileVersionedRootSignature(graphics_root_sig_desc);
+			DX_CALL(g_d3d.device->CreateRootSignature(0, serialized_root_sig->GetBufferPointer(), serialized_root_sig->GetBufferSize(), IID_PPV_ARGS(&g_d3d_raster.blit_root_sig)));
+			g_d3d_raster.blit_root_sig->SetName(L"Raster blit root signature");
+			SafeRelease(serialized_root_sig);
+
+			IDxcBlob* vertex_shader_blob = CompileShader(L"assets/shaders/raster_blit.hlsl", L"VertexShaderEntry", L"vs_6_3");
+			IDxcBlob* pixel_shader_blob = CompileShader(L"assets/shaders/raster_blit.hlsl", L"PixelShaderEntry", L"ps_6_3");
+
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC graphics_state_desc = {};
+			graphics_state_desc.InputLayout.NumElements = 0;
+			graphics_state_desc.InputLayout.pInputElementDescs = nullptr;
+			graphics_state_desc.VS.BytecodeLength = vertex_shader_blob->GetBufferSize();
+			graphics_state_desc.VS.pShaderBytecode = vertex_shader_blob->GetBufferPointer();
+			graphics_state_desc.PS.BytecodeLength = pixel_shader_blob->GetBufferSize();
+			graphics_state_desc.PS.pShaderBytecode = pixel_shader_blob->GetBufferPointer();
+			graphics_state_desc.NumRenderTargets = 1;
+			graphics_state_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+			graphics_state_desc.DepthStencilState.DepthEnable = FALSE;
+			graphics_state_desc.DepthStencilState.StencilEnable = FALSE;
+			graphics_state_desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+			graphics_state_desc.BlendState.AlphaToCoverageEnable = FALSE;
+			graphics_state_desc.BlendState.IndependentBlendEnable = FALSE;
+			graphics_state_desc.BlendState.RenderTarget[0] = rt_blend_desc;
+			graphics_state_desc.SampleDesc.Count = 1;
+			graphics_state_desc.SampleDesc.Quality = 0;
+			graphics_state_desc.SampleMask = UINT_MAX;
+			graphics_state_desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+			graphics_state_desc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+			graphics_state_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+			graphics_state_desc.NodeMask = 0;
+			graphics_state_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+			graphics_state_desc.pRootSignature = g_d3d_raster.blit_root_sig;
+
+			DX_CALL(g_d3d.device->CreateGraphicsPipelineState(&graphics_state_desc, IID_PPV_ARGS(&g_d3d_raster.blit_state)));
+			g_d3d_raster.blit_state->SetName(L"Raster blit graphics pipeline state");
+
+			SafeRelease(vertex_shader_blob);
+			SafeRelease(pixel_shader_blob);
+		}
+
 		RenderBackend::RasterSetViewport(0.0f, 0.0f, (float)g_d3d.render_width, (float)g_d3d.render_height);
 	}
 
@@ -1314,7 +1501,8 @@ namespace
 		clear_value.DepthStencil.Depth = 1.0f;
 		clear_value.DepthStencil.Stencil = 0;
 
-		g_d3d_raster.depth_target = CreateTexture(L"Raster depth target", DXGI_FORMAT_D32_FLOAT, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, g_d3d.render_width, g_d3d.render_height, 1, &clear_value);
+		g_d3d_raster.depth_target = RT_CreateTexture(L"Raster depth target", DXGI_FORMAT_D32_FLOAT, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+			g_d3d.render_width, g_d3d.render_height, D3D12_RESOURCE_STATE_DEPTH_WRITE, 1, &clear_value);
 		CreateTextureDSV(g_d3d_raster.depth_target, g_d3d_raster.depth_target_dsv, DXGI_FORMAT_D32_FLOAT);
 	}
 
@@ -1340,12 +1528,15 @@ namespace
 	{
 		uint64_t timestamp = GetLastWriteTime(file);
 
+		bool shader_file_updated = timestamp != cs->timestamp;
+		bool shader_defines_updated = g_shader_defines.last_modified_time != g_d3d.global_shader_defines.last_modified_time;
+
 		// NOTE(daniel): For reasons opaque to me, it seems sometimes the new file's timestamp
 		// is less than the current. So this tested (timestamp > cs->timestamp) before, but
 		// that turns out to be unreliable.
-		if (timestamp != cs->timestamp)
+		if (shader_file_updated || shader_defines_updated)
 		{
-			ID3D12PipelineState *new_pso = CreateComputePipeline(file, entry_point);
+			ID3D12PipelineState *new_pso = CreateComputePipeline(file, entry_point, g_d3d.global_root_sig);
 			if (new_pso)
 			{
 				RenderBackend::Flush();
@@ -1397,40 +1588,233 @@ namespace
 		}
 	}
 
+	void CreateGenMipMapComputeShader()
+	{
+		D3D12_DESCRIPTOR_RANGE1 ranges[2] = {};
+		ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		ranges[0].NumDescriptors = 1;
+		ranges[0].OffsetInDescriptorsFromTableStart = 0;
+		ranges[0].BaseShaderRegister = 0;
+		ranges[0].RegisterSpace = 0;
+		ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+
+		ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+		ranges[1].NumDescriptors = 4;
+		ranges[1].OffsetInDescriptorsFromTableStart = 0;
+		ranges[1].BaseShaderRegister = 0;
+		ranges[1].RegisterSpace = 0;
+		ranges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+
+		D3D12_ROOT_PARAMETER1 root_parameters[3] = {};
+		root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+		root_parameters[0].Constants.Num32BitValues = sizeof(GenMipMapSettings) / 4;
+		root_parameters[0].Constants.ShaderRegister = 0;
+		root_parameters[0].Constants.RegisterSpace = 0;
+		root_parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		root_parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		root_parameters[1].DescriptorTable.NumDescriptorRanges = 1;
+		root_parameters[1].DescriptorTable.pDescriptorRanges = &ranges[0];
+		root_parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		root_parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		root_parameters[2].DescriptorTable.NumDescriptorRanges = 1;
+		root_parameters[2].DescriptorTable.pDescriptorRanges = &ranges[1];
+		root_parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		D3D12_STATIC_SAMPLER_DESC static_samplers[1] = {};
+		static_samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+		static_samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		static_samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		static_samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		static_samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		static_samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+		static_samplers[0].MinLOD = 0.0f;
+		static_samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+		static_samplers[0].MipLODBias = 0;
+		static_samplers[0].ShaderRegister = 0;
+		static_samplers[0].RegisterSpace = 0;
+		static_samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		D3D12_VERSIONED_ROOT_SIGNATURE_DESC gen_mipmap_root_sig_desc = {};
+		gen_mipmap_root_sig_desc.Desc_1_1.NumParameters = RT_ARRAY_COUNT(root_parameters);
+		gen_mipmap_root_sig_desc.Desc_1_1.pParameters = &root_parameters[0];
+		gen_mipmap_root_sig_desc.Desc_1_1.NumStaticSamplers = RT_ARRAY_COUNT(static_samplers);
+		gen_mipmap_root_sig_desc.Desc_1_1.pStaticSamplers = &static_samplers[0];
+		gen_mipmap_root_sig_desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+		gen_mipmap_root_sig_desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+		ID3DBlob* serialized_root_sig = CompileVersionedRootSignature(gen_mipmap_root_sig_desc);
+		DX_CALL(g_d3d.device->CreateRootSignature(0, serialized_root_sig->GetBufferPointer(), serialized_root_sig->GetBufferSize(), IID_PPV_ARGS(&g_d3d.gen_mipmap_root_sig)));
+		g_d3d.gen_mipmap_root_sig->SetName(L"Gen mip maps root signature");
+
+		SafeRelease(serialized_root_sig);
+
+		g_d3d.cs.gen_mipmaps.pso = CreateComputePipeline(L"assets/shaders/gen_mipmap.hlsl", L"GenMipMapCS", g_d3d.gen_mipmap_root_sig);
+	}
+
+	D3D12_RESOURCE_BARRIER AliasingBarrier(ID3D12Resource* resource_before, ID3D12Resource* resource_after)
+	{
+		D3D12_RESOURCE_BARRIER barrier = {};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_ALIASING;
+		barrier.Aliasing.pResourceBefore = resource_before;
+		barrier.Aliasing.pResourceAfter = resource_after;
+
+		return barrier;
+	}
+
+	uint32_t DivideUp(uint32_t x, uint32_t div)
+	{
+		return (x + div - 1) / div;
+	}
+
+	void GenerateMips(TextureResource* resource)
+	{
+		if (!resource->texture || resource->texture->GetDesc().MipLevels == 1)
+			return;
+
+		CommandList& command_list = *g_d3d.resource_upload_ring_buffer.command_list;
+
+		ID3D12Resource* uav_resource = resource->texture;
+		ID3D12Resource* aliased_resource = nullptr;
+
+		// If the source texture does not allow unordered access, we will alias the source texture with another texture
+		if ((resource->texture->GetDesc().Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) == 0)
+		{
+			D3D12_RESOURCE_DESC alias_resource_desc = resource->texture->GetDesc();
+			alias_resource_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+			D3D12_RESOURCE_DESC uav_desc = alias_resource_desc;
+			D3D12_RESOURCE_DESC alias_uav_descs[] = { alias_resource_desc, uav_desc };
+
+			D3D12_RESOURCE_ALLOCATION_INFO alloc_info = g_d3d.device->GetResourceAllocationInfo(0, RT_ARRAY_COUNT(alias_uav_descs), alias_uav_descs);
+			
+			D3D12_HEAP_DESC heap_desc = {};
+			heap_desc.SizeInBytes = alloc_info.SizeInBytes;
+			heap_desc.Alignment = alloc_info.Alignment;
+			heap_desc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_NON_RT_DS_TEXTURES;
+			heap_desc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heap_desc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heap_desc.Properties.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+			ID3D12Heap* heap;
+			DX_CALL(g_d3d.device->CreateHeap(&heap_desc, IID_PPV_ARGS(&heap)));
+			heap->SetName(L"Temporary mipmap gen heap");
+			RT_TRACK_TEMP_OBJECT(heap, &command_list);
+
+			DX_CALL(g_d3d.device->CreatePlacedResource(
+				heap, 0, &alias_resource_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&aliased_resource)
+			));
+			aliased_resource->SetName(L"Temporary aliasing resource mipmap gen");
+			RT_TRACK_TEMP_RESOURCE(aliased_resource, &command_list);
+
+			DX_CALL(g_d3d.device->CreatePlacedResource(
+				heap, 0, &uav_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&uav_resource)
+			));
+			uav_resource->SetName(L"Temporary UAV resource mipmap gen");
+			RT_TRACK_TEMP_RESOURCE(uav_resource, &command_list);
+
+			D3D12_RESOURCE_BARRIER alias_barrier_before = AliasingBarrier(nullptr, aliased_resource);
+			command_list->ResourceBarrier(1, &alias_barrier_before);
+			CopyResource(command_list, aliased_resource, resource->texture);
+			D3D12_RESOURCE_BARRIER alias_barrier_after = AliasingBarrier(aliased_resource, uav_resource);
+			command_list->ResourceBarrier(1, &alias_barrier_after);
+		}
+
+		// TODO(Justin): These are temporary descriptor allocations and should ideally be freed when the mips are done
+		// However, since descriptor heaps can be quite big in size, we won't care about this.
+		DescriptorAllocation srv = g_d3d.cbv_srv_uav.Allocate(1);
+		DescriptorAllocation uavs = g_d3d.cbv_srv_uav.Allocate(resource->texture->GetDesc().MipLevels - 1);
+
+		command_list->SetPipelineState(g_d3d.cs.gen_mipmaps.pso);
+		command_list->SetComputeRootSignature(g_d3d.gen_mipmap_root_sig);
+
+		GenMipMapSettings gen_mipmap_settings = {};
+		gen_mipmap_settings.is_srgb = resource->texture->GetDesc().Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+
+		for (uint32_t src_mip = 0; src_mip < ((uint32_t)resource->texture->GetDesc().MipLevels - 1);)
+		{
+			uint64_t src_width = resource->texture->GetDesc().Width >> src_mip;
+			uint32_t src_height = resource->texture->GetDesc().Height >> src_mip;
+			uint32_t dst_width = uint32_t(src_width >> 1);
+			uint32_t dst_height = src_height >> 1;
+			
+			gen_mipmap_settings.src_dim = (src_height & 1) << 1 | (src_width & 1);
+			DWORD mip_count = 0;
+
+			// Determine how many mips we want to generate now (max of 4)
+			_BitScanForward(&mip_count, (dst_width == 1 ? dst_width : dst_height) |
+				(dst_height == 1 ? dst_width : dst_height));
+
+			mip_count = RT_MIN(4, mip_count + 1);
+			mip_count = (src_mip + mip_count) >= resource->texture->GetDesc().MipLevels ?
+				resource->texture->GetDesc().MipLevels - src_mip - 1 : mip_count;
+
+			dst_width = RT_MAX(1u, dst_width);
+			dst_height = RT_MAX(1u, dst_height);
+
+			gen_mipmap_settings.src_mip = src_mip;
+			gen_mipmap_settings.num_mips = mip_count;
+			gen_mipmap_settings.texel_size.x = 1.0f / (float)dst_width;
+			gen_mipmap_settings.texel_size.y = 1.0f / (float)dst_height;
+
+			D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
+			srv_desc.Format = resource->texture->GetDesc().Format;
+			srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srv_desc.Texture2D.MostDetailedMip = 0;
+			srv_desc.Texture2D.MipLevels = resource->texture->GetDesc().MipLevels;
+
+			g_d3d.device->CreateShaderResourceView(uav_resource, &srv_desc, srv.cpu);
+			CreateTextureSRV(uav_resource, srv.cpu, resource->texture->GetDesc().Format);
+			for (uint32_t mip = 0; mip < mip_count; ++mip)
+			{
+				D3D12_UNORDERED_ACCESS_VIEW_DESC uav_desc = {};
+				uav_desc.Format = resource->texture->GetDesc().Format == DXGI_FORMAT_R8_UNORM ? DXGI_FORMAT_R8_UNORM : DXGI_FORMAT_R8G8B8A8_UNORM;
+				uav_desc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+				uav_desc.Texture2D.MipSlice = src_mip + mip + 1;
+
+				g_d3d.device->CreateUnorderedAccessView(uav_resource, nullptr, &uav_desc, uavs.GetCPUDescriptor(src_mip + mip));
+			}
+
+			ID3D12DescriptorHeap* heap = { g_d3d.cbv_srv_uav.GetHeap() };
+			command_list->SetDescriptorHeaps(1, &heap);
+			// Set the constant buffer data for the mip map settings constant buffer
+			command_list->SetComputeRoot32BitConstants(0, sizeof(GenMipMapSettings) / 4, &gen_mipmap_settings, 0);
+			// Set both descriptor tables for the source texture SRV and the target texture UAVs
+			command_list->SetComputeRootDescriptorTable(1, srv.GetGPUDescriptor(0));
+			command_list->SetComputeRootDescriptorTable(2, uavs.GetGPUDescriptor(src_mip));
+
+			command_list->Dispatch(DivideUp(dst_width, 8), DivideUp(dst_height, 8), 1);
+			UAVBarrier(command_list, uav_resource);
+
+			src_mip += mip_count;
+		}
+
+		if (aliased_resource)
+		{
+			D3D12_RESOURCE_BARRIER barriers[] = {
+				AliasingBarrier(uav_resource, aliased_resource),
+				GetTransitionBarrier(aliased_resource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COPY_SOURCE),
+				GetTransitionBarrier(resource->texture, g_d3d.resource_tracker.GetResourceState(resource->texture), D3D12_RESOURCE_STATE_COPY_DEST)
+			};
+			command_list->ResourceBarrier(3, barriers);
+			command_list->CopyResource(resource->texture, aliased_resource);
+
+			if (g_d3d.resource_tracker.GetResourceState(resource->texture) != D3D12_RESOURCE_STATE_COPY_DEST)
+			{
+				D3D12_RESOURCE_BARRIER barrier = GetTransitionBarrier(resource->texture,
+					D3D12_RESOURCE_STATE_COPY_DEST, g_d3d.resource_tracker.GetResourceState(resource->texture));
+				command_list->ResourceBarrier(1, &barrier);
+			}
+		}
+	}
+
     void CreateIntermediateRendertargets()
     {
-		// TODO: This should call CreateTexture()
-		// NOTE(daniel): If it should call CreateTexture, CreateTexture shouldn't create an SRV for you automatically
-		
 		auto CreateRenderTarget = [](const wchar_t *name, int scale_x, int scale_y, DXGI_FORMAT format, ID3D12Resource **result)
 		{
-			D3D12_HEAP_PROPERTIES prop = {};
-			prop.Type = D3D12_HEAP_TYPE_DEFAULT;
-
-			D3D12_RESOURCE_DESC desc = {};
-			desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-			desc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-			desc.Width  = (g_d3d.render_width  + scale_x - 1) / scale_x;
-			desc.Height = (g_d3d.render_height + scale_y - 1) / scale_y;
-			desc.DepthOrArraySize = 1;
-			desc.MipLevels = 1;
-			desc.Format = format;
-			desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-			desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-			desc.SampleDesc = { 1, 0 };
-
-			g_d3d.device->CreateCommittedResource(
-				&prop,
-				D3D12_HEAP_FLAG_NONE,
-				&desc,
-				D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-				nullptr,
-				IID_PPV_ARGS(result)
-			);
-
-			(*result)->SetName(name);
-
-			RT_TRACK_RESOURCE(*result, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			(*result) = RT_CreateTexture(name, format, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+				, (g_d3d.render_width + scale_x - 1) / scale_x, (g_d3d.render_height + scale_y - 1) / scale_y, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		};
 
 #define RT_CREATE_RENDER_TARGETS(name, reg, scale_x, scale_y, type, format) \
@@ -1439,7 +1823,7 @@ namespace
 
 		RT_RENDER_TARGETS(RT_CREATE_RENDER_TARGETS)
 
-		CreateTextureRTV(g_d3d.rt.color_final, g_d3d.color_final_rtv, g_d3d.render_target_formats[RenderTarget_color_final]);
+		CreateTextureRTV(g_d3d.rt.color_final, g_d3d.color_final_rtv.cpu, g_d3d.render_target_formats[RenderTarget_color_final]);
 	}
 
 	void InitDearImGui()
@@ -1606,7 +1990,7 @@ namespace
 			int w, h, n;
 			unsigned char *pixels = RT_LoadImageFromDisk(temp, path, &w, &h, &n, 4);
 
-			g_d3d.blue_noise_textures[blue_noise_index] = CreateTexture(Utf16FromUtf8(temp, path), DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RESOURCE_FLAG_NONE, (size_t)w, (uint32_t)h);
+			g_d3d.blue_noise_textures[blue_noise_index] = RT_CreateTexture(Utf16FromUtf8(temp, path), DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RESOURCE_FLAG_NONE, (size_t)w, (uint32_t)h);
 			UploadTextureData(g_d3d.blue_noise_textures[blue_noise_index], 4*w, h, pixels);
 
 			for (size_t frame_index = 0; frame_index < BACK_BUFFER_COUNT; frame_index++)
@@ -1640,6 +2024,8 @@ namespace
 		CreateIntermediateRendertargets();
 		CreatePixelDebugResources();
 		CreateRasterDepthTarget();
+
+		g_d3d_raster.render_target = g_d3d.rt.color_final;
 	}
 
 	void InitializeFrameResources()
@@ -1801,6 +2187,8 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 		g_d3d.halton_samples[i].y = Halton(i, 3) - 0.5f;
 	}
 
+	g_d3d.mesh_tracker.Init(g_d3d.arena);
+
 	InitTweakVars();
 
     EnableDebugLayer();
@@ -1830,15 +2218,19 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 	g_d3d.instance_data_buffer = RT_CreateReadOnlyBuffer(L"Instance Data Buffer", sizeof(InstanceData) * MAX_INSTANCES);
 
 	// Gotta allocate this one for creating the intermediate render targets
-	g_d3d.color_final_rtv = g_d3d.rtv.Allocate(1).GetCPUDescriptor(0);
+	g_d3d.color_final_rtv = g_d3d.rtv.Allocate(1);
 
     CreateIntermediateRendertargets();
 	CreatePixelDebugResources();
 
 	ReloadComputeShadersIfThereAreNewOnes();
+	CreateGenMipMapComputeShader();
 
 	LoadBlueNoiseTextures();
 	CreateDefaultTextures();
+
+	g_d3d_raster.render_target = g_d3d.rt.color_final;
+	g_d3d_raster.rtv_handle = g_d3d.color_final_rtv.cpu;
 
 	// ------------------------------------------------------------------
 	// Initialize all materials to have default textures
@@ -1882,10 +2274,10 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 
 		RT_Vec2 uvs[] =
 		{
-			{ 0, 0 },
-			{ 1, 0 },
 			{ 1, 1 },
 			{ 0, 1 },
+			{ 0, 0 },
+			{ 1, 0 },
 		};
 
 		RT_Triangle triangles[2] = {};
@@ -2182,6 +2574,81 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 	{
 		if (ImGui::Begin("Render Settings"))
 		{
+			static float loaded_timer = 0.0f;
+			static float saved_timer = 0.0f;
+			static char* preset_name;
+
+			if (ImGui::Button("Load Settings"))
+			{
+				if (RT_DeserializeConfigFromFile(g_d3d.io.config, RT_RENDER_SETTINGS_CONFIG_FILE))
+				{
+					UpdateTweakvarsFromIOConfig();
+					loaded_timer = 2.0f;
+				}
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Save Settings"))
+			{
+				RT_SerializeConfigToFile(g_d3d.io.config, RT_RENDER_SETTINGS_CONFIG_FILE);
+				saved_timer = 2.0f;
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Save as preset"))
+			{
+				ImGui::OpenPopup("Preset name");
+				preset_name = (char*)malloc(128);
+				memset(preset_name, 0, 128);
+				saved_timer = 2.0f;
+			}
+
+			if (ImGui::BeginPopupModal("Preset name")) {
+				ImGui::InputText("name", preset_name, 128);
+
+				char path[23] = "assets/render_presets/";
+
+				if (ImGui::Button("Done"))
+				{
+					ImGui::CloseCurrentPopup();
+					char buff[157];
+					strcpy(buff, path);
+					strcat(buff, preset_name);
+					strcat(buff, ".vars");
+					RT_SerializeConfigToFile(g_d3d.io.config, buff);
+					free(preset_name);
+				}
+
+				ImGui::EndPopup();
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Reset Default Settings"))
+			{
+				ResetTweakvarsToDefault();
+			}
+
+			if (loaded_timer > 0.0f)
+			{
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 1.0f, 0.5f, 1.0f));
+				ImGui::Text("Loaded Renderer Settings");
+				ImGui::PopStyleColor();
+
+				loaded_timer -= 1.0f / 60.0f;
+			}
+
+			if (saved_timer > 0.0f)
+			{
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 1.0f, 1.0f));
+				ImGui::Text("Saved Renderer Settings");
+				ImGui::PopStyleColor();
+
+				saved_timer -= 1.0f / 60.0f;
+			}
+
 #if RT_PIXEL_DEBUG
 			ImGui::Text("Pixel debug mode is enabled");
 			ImGui::Text("Hold Middle Mouse Button to debug pixels");
@@ -2190,8 +2657,6 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 #endif
 
 			ImGui::Text("Lights: %u/%u", g_d3d.prev_lights_count, RT_MAX_LIGHTS);
-
-			ImGui::Checkbox("Vsync", &g_d3d.vsync);
 
 			if (ImGui::Button("Clear Render Targets"))
 			{
@@ -2282,9 +2747,29 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 			#undef TWEAK_COLOR
 			#undef TWEAK_OPTIONS
 
+			WriteTweakvarsToIOConfig();
+
 			if (tweak_vars.reference_mode != current_reference_mode)
 			{
 				g_d3d.accum_frame_index = 0;
+			}
+
+			// NOTE(daniel): This is a bit half-baked because I just wanted to try the early out thing.
+			if (ImGui::CollapsingHeader("Compile Time Shader Settings"))
+			{
+				ImGui::Indent();
+				if (ImGui::Checkbox("Early Out when Out of Bounds in Compute Shaders", &g_shader_defines.early_out_of_bounds))
+				{
+					if (g_shader_defines.early_out_of_bounds)
+					{
+						RT_ConfigWriteString(&g_d3d.global_shader_defines, RT_StringLiteral("DO_EARLY_OUT_IN_COMPUTE_SHADERS"), RT_StringLiteral("1"));
+					}
+					else
+					{
+						RT_ConfigEraseKey(&g_d3d.global_shader_defines, RT_StringLiteral("DO_EARLY_OUT_IN_COMPUTE_SHADERS"));
+					}
+				}
+				ImGui::Unindent();
 			}
 		} ImGui::End();
 
@@ -2314,6 +2799,7 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 	}
 
 	g_d3d.scene.freezeframe = false;
+	g_d3d.scene.render_blit = scene_settings->render_blit;
 
 	if (tweak_vars.reference_mode)
 	{
@@ -2338,6 +2824,8 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 
 void RenderBackend::EndScene()
 {
+	UpdateTweakvarsFromIOConfig();
+
 	if (!g_d3d.scene.freezeframe)
 	{
 		// ------------------------------------------------------------------
@@ -2419,6 +2907,7 @@ void RenderBackend::EndScene()
 
 void RenderBackend::EndFrame()
 {
+	g_shader_defines.last_modified_time = g_d3d.global_shader_defines.last_modified_time;
 }
 
 void RenderBackend::SwapBuffers()
@@ -2440,8 +2929,8 @@ void RenderBackend::SwapBuffers()
 	// ------------------------------------------------------------------
 	// Swap buffers
 
-	uint32_t sync_interval = g_d3d.vsync ? 1 : 0;
-	uint32_t present_flags = g_d3d.tearing_supported && !g_d3d.vsync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+	uint32_t sync_interval = tweak_vars.vsync ? 1 : 0;
+	uint32_t present_flags = g_d3d.tearing_supported && !tweak_vars.vsync ? DXGI_PRESENT_ALLOW_TEARING : 0;
 	
 	HRESULT hr = g_d3d.dxgi_swapchain4->Present(sync_interval, present_flags);
 
@@ -2565,6 +3054,8 @@ void RenderBackend::SwapBuffers()
 	g_d3d_raster.line_at = g_d3d.current_back_buffer_index * MAX_RASTER_LINES;
 	g_d3d_raster.debug_line_at = g_d3d.current_back_buffer_index * MAX_DEBUG_LINES_WORLD;
 
+	g_d3d.mesh_tracker.PruneOldEntries(g_d3d.frame_index);
+
 	RECT client_rect;
 	GetClientRect(g_d3d.hWnd, &client_rect);
 
@@ -2623,8 +3114,12 @@ int RenderBackend::CheckWindowMinimized()
 RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& texture_params)
 {
 	RT::MemoryScope temp;
+
+	if (!texture_params.pixels)
+		return g_d3d.pink_checkerboard_texture;
+
 	TextureResource resource = {};
-	
+
 	char *texture_resource_name = RT_ArenaPrintF(temp, "Texture: %s", texture_params.name);
     static int n_textures_uploaded_please_remove_me_later = 0;
     printf("textures loaded: %d\n", ++n_textures_uploaded_please_remove_me_later);
@@ -2638,8 +3133,19 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 		case RT_TextureFormat_R8:     format = DXGI_FORMAT_R8_UNORM;            bpp = 1; break;
 	}
 
-	resource.texture = CreateTexture(Utf16FromUtf8(temp, texture_resource_name), format, D3D12_RESOURCE_FLAG_NONE, (size_t)texture_params.width, (uint32_t)texture_params.height);
+	uint32_t w = texture_params.width, h = texture_params.height, num_mips = 0;
+	while (w >= 1 && h >= 1)
+	{
+		num_mips++;
+		w /= 2;
+		h /= 2;
+	}
+
+	resource.texture = RT_CreateTexture(Utf16FromUtf8(temp, texture_resource_name), format, D3D12_RESOURCE_FLAG_NONE, (size_t)texture_params.width, (uint32_t)texture_params.height,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, (uint16_t)num_mips);
+
 	UploadTextureData(resource.texture, bpp*texture_params.width, texture_params.height, texture_params.pixels);
+	GenerateMips(&resource);
 
 	resource.descriptors = g_d3d.cbv_srv_uav.Allocate(1);
 	CreateTextureSRV(resource.texture, resource.descriptors.GetCPUDescriptor(0), format);
@@ -2659,12 +3165,23 @@ RT_ResourceHandle RenderBackend::UploadMesh(const RT_UploadMeshParams& mesh_para
 
 	ID3D12Resource* blas = BuildBLAS(mesh_params.triangle_count, mesh_params.triangles, D3D12_RAYTRACING_GEOMETRY_FLAG_NONE);
 
+	static uint32_t blas_index = 0;
+	blas->SetName(Utf16FromUtf8(temp_arena, RT_ArenaPrintF(temp_arena, "BLAS %u (%s)", blas_index++, mesh_params.name)));
+
 	MeshResource resource = {};
 	resource.blas = blas;
 	resource.triangle_buffer = result.triangle_buffer;
 	resource.triangle_buffer_descriptor = result.triangle_buffer_descriptor;
 
 	return g_mesh_slotmap.Insert(resource);
+}
+
+void RenderBackend::ReleaseTexture(const RT_ResourceHandle texture_handle)
+{
+	TextureResource* texture_resource = g_texture_slotmap.Find(texture_handle);
+	RT_RELEASE_RESOURCE(texture_resource->texture);
+	g_d3d.cbv_srv_uav.Free(texture_resource->descriptors);
+	g_texture_slotmap.Remove(texture_handle);
 }
 
 void RenderBackend::ReleaseMesh(const RT_ResourceHandle mesh_handle)
@@ -2737,6 +3254,16 @@ RT_ResourceHandle RenderBackend::GetDefaultBlackTexture()
 	return g_d3d.black_texture_handle;
 }
 
+RT_ResourceHandle RenderBackend::GetBillboardMesh()
+{
+	return g_d3d.billboard_quad;
+}
+
+RT_ResourceHandle RenderBackend::GetCubeMesh()
+{
+	return g_d3d.cube;
+}
+
 void RenderBackend::RaytraceSubmitLights(size_t count, const RT_Light* lights)
 {
 	if (g_d3d.scene.freezeframe)
@@ -2764,7 +3291,11 @@ float RenderBackend::RaytraceGetVerticalOffset() {
 	return g_d3d.viewport_offset_y;
 }
 
-void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& render_mesh_params)
+uint32_t RenderBackend::RaytraceGetCurrentLightCount() {
+	return g_d3d.lights_count;
+}
+
+void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& params)
 {
 	if (g_d3d.scene.freezeframe)
 		return;
@@ -2772,7 +3303,7 @@ void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& render_mesh_params)
 	if (ALWAYS(g_d3d.tlas_instance_count < MAX_INSTANCES))
 	{
 		FrameData *frame = CurrentFrameData();
-		MeshResource* mesh_resource = g_mesh_slotmap.Find(render_mesh_params.mesh_handle);
+		MeshResource* mesh_resource = g_mesh_slotmap.Find(params.mesh_handle);
 
 		if (!mesh_resource)
 		{
@@ -2802,23 +3333,44 @@ void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& render_mesh_params)
 
 		D3D12_RAYTRACING_INSTANCE_DESC *instance_desc = frame->instance_descs.As<D3D12_RAYTRACING_INSTANCE_DESC>() + instance_index;
 		instance_desc->InstanceMask = 1;
-		memcpy(instance_desc->Transform, render_mesh_params.transform, sizeof(float)*12);
+		memcpy(instance_desc->Transform, params.transform, sizeof(float)*12);
 		instance_desc->AccelerationStructure = mesh_resource->blas->GetGPUVirtualAddress();
 		instance_desc->InstanceContributionToHitGroupIndex = base_hitgroup_index * 2;
 		instance_desc->Flags = 0;
 
-		if (render_mesh_params.flags & RT_RenderMeshFlags_ReverseCulling)
+		if (params.flags & RT_RenderMeshFlags_ReverseCulling)
 		{
 			instance_desc->Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_FRONT_COUNTERCLOCKWISE;
 		}
 
+		TrackedMeshData *tracked = nullptr;
+		bool tracked_data_valid = g_d3d.mesh_tracker.GetTrackedMeshData(params.key.value, g_d3d.frame_index, &tracked);
+
 		InstanceData *instance_data = frame->instance_data.As<InstanceData>() + instance_index;
-		instance_data->object_to_world = *render_mesh_params.transform;
-		instance_data->world_to_object = RT_Mat4Inverse(*render_mesh_params.transform);
-		instance_data->object_to_world_prev = *render_mesh_params.prev_transform;
-		instance_data->material_override = render_mesh_params.material_override;
-		instance_data->material_color = render_mesh_params.color;
+		instance_data->object_to_world = *params.transform;
+		instance_data->world_to_object = RT_Mat4Inverse(*params.transform);
+
+		if (params.prev_transform)
+		{
+			instance_data->object_to_world_prev = *params.prev_transform;
+		}
+		else
+		{
+			if (tracked_data_valid && !(params.flags & RT_RenderMeshFlags_Teleport))
+			{
+				instance_data->object_to_world_prev = tracked->prev_transform;
+			}
+			else
+			{
+				instance_data->object_to_world_prev = *params.transform;
+			}
+		}
+
+		instance_data->material_override = params.material_override;
+		instance_data->material_color = params.color;
 		instance_data->triangle_buffer_idx = mesh_resource->triangle_buffer_descriptor.heap_offset;
+
+		tracked->prev_transform = *params.transform;
 	}
 }
 
@@ -2859,7 +3411,7 @@ void RenderBackend::RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 
 	{
 		RT_Vec3 z = RT_Vec3Negate(g_d3d.scene.camera.forward);
 
-		RT_Vec3 y = RT_Vec3Muls(RT_Vec3Sub(bot_p, top_p), 0.5f);
+		RT_Vec3 y = RT_Vec3Muls(RT_Vec3Sub(top_p, bot_p), 0.5f);
 		RT_Vec3 x = RT_Vec3Normalize(RT_Vec3Cross(y, z));
 		x = RT_Vec3Muls(x, width);
 
@@ -3051,6 +3603,7 @@ void RenderBackend::RaytraceRender()
 	CreateRenderTargetUAV(RenderTarget_bloom5, D3D12GlobalDescriptors_UAV_bloom5);
 	CreateRenderTargetUAV(RenderTarget_bloom6, D3D12GlobalDescriptors_UAV_bloom6);
 	CreateRenderTargetUAV(RenderTarget_bloom7, D3D12GlobalDescriptors_UAV_bloom7);
+	CreateRenderTargetUAV(RenderTarget_scene, D3D12GlobalDescriptors_UAV_scene);
 	CreateRenderTargetUAV(RenderTarget_color_reference, D3D12GlobalDescriptors_UAV_color_reference);
 	CreateRenderTargetUAV(RenderTarget_color_final, D3D12GlobalDescriptors_UAV_color_final);
 	CreateRenderTargetUAV(RenderTarget_debug, D3D12GlobalDescriptors_UAV_debug);
@@ -3074,6 +3627,7 @@ void RenderBackend::RaytraceRender()
 	CreateRenderTargetSRV(RenderTarget_bloom5, D3D12GlobalDescriptors_SRV_bloom5);
 	CreateRenderTargetSRV(RenderTarget_bloom6, D3D12GlobalDescriptors_SRV_bloom6);
 	CreateRenderTargetSRV(RenderTarget_bloom7, D3D12GlobalDescriptors_SRV_bloom7);
+	ResourceTransition(command_list, g_d3d.rt.scene, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
 	// ------------------------------------------------------------------
 	// Create unordered access view for the pixel debug buffer
@@ -3372,17 +3926,6 @@ void RenderBackend::RaytraceRender()
 
 	if (!tweak_vars.reference_mode)
 	{
-#if 0
-		command_list->SetPipelineState(g_d3d.cs.svgf_prepass.pso);
-		command_list->Dispatch(dispatch_w, dispatch_h, 1);
-
-		ID3D12Resource* uav_render_targets[] =
-		{
-			g_d3d.rt.diff_denoise_ping, g_d3d.rt.spec_denoise_ping,
-		};
-		UAVBarriers(command_list, RT_ARRAY_COUNT(uav_render_targets), uav_render_targets);
-#endif
-
 		command_list->SetPipelineState(g_d3d.cs.svgf_resample.pso);
 		command_list->Dispatch(dispatch_w, dispatch_h, 1);
 
@@ -3392,17 +3935,6 @@ void RenderBackend::RaytraceRender()
 			g_d3d.rt.moments, g_d3d.rt.history_length
 		};
 		UAVBarriers(command_list, RT_ARRAY_COUNT(uav_render_targets), uav_render_targets);
-
-#if 0
-		command_list->SetPipelineState(g_d3d.cs.svgf_history_fix.pso);
-		command_list->Dispatch(dispatch_w, dispatch_h, 1);
-
-		ID3D12Resource* uav_render_targets[] =
-		{
-			g_d3d.rt.diff_denoise_ping, g_d3d.rt.spec_denoise_ping,
-		};
-		UAVBarriers(command_list, RT_ARRAY_COUNT(uav_render_targets), uav_render_targets);
-#endif
 	}
 	else
 	{
@@ -3592,7 +4124,8 @@ void RenderBackend::RaytraceRender()
 
 	// ------------------------------------------------------------------
 	// Do tonemapping / gamma correction / other post processing effects
-
+	
+	UAVBarrier(command_list, g_d3d.rt.debug);
 	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_PostProcess);
 
 	ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[a]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -3612,7 +4145,10 @@ void RenderBackend::RaytraceRender()
 	command_list->SetPipelineState(g_d3d.cs.resolve_final_color.pso);
 	command_list->Dispatch(dispatch_w, dispatch_h, 1);
 
-	UAVBarrier(command_list, g_d3d.rt.color_final);
+	UAVBarrier(command_list, g_d3d.rt.scene);
+
+	if (!g_d3d.scene.render_blit)
+		CopyResource(command_list, g_d3d.rt.color_final, g_d3d.rt.scene);
 
 	GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_FrameTime);
 	GPUProfiler::ResolveTimestampQueries(command_list);
@@ -3627,6 +4163,67 @@ void RenderBackend::RaytraceSetSkyColors(const RT_Vec3 top, const RT_Vec3 bottom
 void RenderBackend::RasterSetViewport(float x, float y, float width, float height)
 {
 	g_d3d_raster.viewport = { x, y, width, height, 0.1f, 5000.0f };
+}
+
+void RenderBackend::RasterSetRenderTarget(RT_ResourceHandle texture)
+{
+	if (RT_RESOURCE_HANDLE_VALID(texture))
+	{
+		TextureResource* texture_resource = g_texture_slotmap.Find(texture);
+		if (ALWAYS(texture_resource))
+		{
+			CommandList& command_list = g_d3d.command_queue_direct->GetCommandList();
+
+			// Check texture flags if render target usage is allowed
+			if (!(texture_resource->texture->GetDesc().Flags & D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET))
+			{
+				// Get name of the texture
+				wchar_t texture_name[128] = {};
+				UINT name_size = (UINT)RT_ARRAY_COUNT(texture_name);
+				texture_resource->texture->GetPrivateData(WKPDID_D3DDebugObjectNameW, &name_size, texture_name);
+
+				// Use the same resource desc to create the render target clone, plus add the render target allow flag
+				D3D12_RESOURCE_DESC render_target_desc = texture_resource->texture->GetDesc();
+				render_target_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+				render_target_desc.MipLevels = 1;
+
+				D3D12_CLEAR_VALUE clear_value = {};
+				float clear_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+				memcpy(clear_value.Color, &clear_color, sizeof(float) * 4);
+				clear_value.Format = render_target_desc.Format;
+
+				ID3D12Resource* rt_texture = RT_CreateTexture(texture_name, &render_target_desc, &clear_value);
+				
+				// Track the old resource as a temporary resource, which means it will be released once all pending commands with that resource are finished
+				RT_TRACK_TEMP_RESOURCE(texture_resource->texture, &command_list);
+
+				// Set texture_resource->texture to the new render target version of the d3d12 resource
+				// Also allocate a render target descriptor for this new texture in the TextureResource
+				texture_resource->texture = rt_texture;
+				texture_resource->rtv_descriptor = g_d3d.rtv.Allocate(1);
+
+				// Create the RTV, and also re-create the SRV, since it now needs to point to the new resource
+				CreateTextureSRV(texture_resource->texture, texture_resource->descriptors.cpu, texture_resource->texture->GetDesc().Format);
+				CreateTextureRTV(texture_resource->texture, texture_resource->rtv_descriptor.cpu, DXGI_FORMAT_R8G8B8A8_UNORM);
+			}
+
+			g_d3d_raster.render_target = texture_resource->texture;
+			g_d3d_raster.rtv_handle = texture_resource->rtv_descriptor.cpu;
+
+			// Clear the render target
+			ResourceTransition(command_list, g_d3d_raster.render_target, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+			// Set the current raster render target to the new render target texture, and create the render target view
+			float clear_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+			command_list->ClearRenderTargetView(g_d3d_raster.rtv_handle, clear_color, 0, nullptr);
+			g_d3d.command_queue_direct->ExecuteCommandList(command_list);
+			
+			return;
+		}
+	}
+
+	g_d3d_raster.render_target = g_d3d.rt.color_final;
+	g_d3d_raster.rtv_handle = g_d3d.color_final_rtv.cpu;
 }
 
 void RenderBackend::RasterTriangles(RT_RasterTrianglesParams* params, uint32_t num_params)
@@ -3693,58 +4290,65 @@ void RenderBackend::RasterRender()
 	// Flush the ring buffer for any pending resource uploads
 	FlushRingBuffer(&g_d3d.resource_upload_ring_buffer);
 
-	ResourceTransition(command_list, g_d3d.rt.color_final, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	ResourceTransition(command_list, g_d3d_raster.render_target, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	command_list->RSSetViewports(1, &g_d3d_raster.viewport);
-
 	D3D12_RECT scissor_rect = { 0, 0, LONG_MAX, LONG_MAX };
 	command_list->RSSetScissorRects(1, &scissor_rect);
+	command_list->OMSetRenderTargets(1, &g_d3d_raster.rtv_handle, FALSE, nullptr);
 
-	command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv, FALSE, nullptr);
+	size_t vertex_buffer_offset = 0;
 
-	command_list->SetGraphicsRootSignature(g_d3d_raster.tri_root_sig);
-	command_list->SetPipelineState(g_d3d_raster.tri_state);
-	command_list->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	if (g_d3d_raster.tri_count)
+	{
+		command_list->SetGraphicsRootSignature(g_d3d_raster.tri_root_sig);
+		command_list->SetPipelineState(g_d3d_raster.tri_state);
 
-	size_t vertex_buffer_offset = g_d3d_raster.tri_at * 3 * sizeof(RT_RasterTriVertex);
+		command_list->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// Setup vertex and index buffer views
-	D3D12_VERTEX_BUFFER_VIEW vertex_vbv = {};
-	vertex_vbv.BufferLocation = g_d3d_raster.tri_vertex_buffer->GetGPUVirtualAddress() + vertex_buffer_offset;
-	vertex_vbv.SizeInBytes = (UINT)(g_d3d_raster.tri_count * 3 * sizeof(RT_RasterTriVertex));
-	vertex_vbv.StrideInBytes = sizeof(RT_RasterTriVertex);
-	command_list->IASetVertexBuffers(0, 1, &vertex_vbv);
+		vertex_buffer_offset = g_d3d_raster.tri_at * 3 * sizeof(RT_RasterTriVertex);
 
-	// Setup bindless SRV descriptor table
-	ID3D12DescriptorHeap* const heaps[] = {g_d3d.cbv_srv_uav.GetHeap()};
-	command_list->SetDescriptorHeaps(1, heaps);
-	command_list->SetGraphicsRootDescriptorTable(0, g_d3d.cbv_srv_uav.GetGPUBase());
+		// Setup vertex and index buffer views
+		D3D12_VERTEX_BUFFER_VIEW vertex_vbv = {};
+		vertex_vbv.BufferLocation = g_d3d_raster.tri_vertex_buffer->GetGPUVirtualAddress() + vertex_buffer_offset;
+		vertex_vbv.SizeInBytes = (UINT)(g_d3d_raster.tri_count * 3 * sizeof(RT_RasterTriVertex));
+		vertex_vbv.StrideInBytes = sizeof(RT_RasterTriVertex);
+		command_list->IASetVertexBuffers(0, 1, &vertex_vbv);
 
-	// Draw
-	command_list->DrawInstanced((UINT)(g_d3d_raster.tri_count * 3), 1, 0, 0);
+		// Setup bindless SRV descriptor table
+		ID3D12DescriptorHeap* const heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
+		command_list->SetDescriptorHeaps(1, heaps);
+		command_list->SetGraphicsRootDescriptorTable(0, g_d3d.cbv_srv_uav.GetGPUBase());
 
-	g_d3d_raster.tri_at += g_d3d_raster.tri_count;
-	g_d3d_raster.tri_count = 0;
+		// Draw
+		command_list->DrawInstanced((UINT)(g_d3d_raster.tri_count * 3), 1, 0, 0);
+
+		g_d3d_raster.tri_at += g_d3d_raster.tri_count;
+		g_d3d_raster.tri_count = 0;
+	}
 
 	// ------------------------------------------------------------------
 	// Render lines
 
-	command_list->SetGraphicsRootSignature(g_d3d_raster.line_root_sig);
-	command_list->SetPipelineState(g_d3d_raster.line_state);
-	command_list->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_LINELIST);
+	if (g_d3d_raster.line_count)
+	{
+		command_list->SetGraphicsRootSignature(g_d3d_raster.line_root_sig);
+		command_list->SetPipelineState(g_d3d_raster.line_state);
+		command_list->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_LINELIST);
 
-	vertex_buffer_offset = g_d3d_raster.line_at * 2 * sizeof(RT_RasterLineVertex);
+		vertex_buffer_offset = g_d3d_raster.line_at * 2 * sizeof(RT_RasterLineVertex);
 
-	D3D12_VERTEX_BUFFER_VIEW vbv = {};
-	vbv.BufferLocation = g_d3d_raster.line_vertex_buffer->GetGPUVirtualAddress() + vertex_buffer_offset;
-	vbv.SizeInBytes = (UINT)(g_d3d_raster.line_count * 2 * sizeof(RT_RasterLineVertex));
-	vbv.StrideInBytes = sizeof(RT_RasterLineVertex);
+		D3D12_VERTEX_BUFFER_VIEW vbv = {};
+		vbv.BufferLocation = g_d3d_raster.line_vertex_buffer->GetGPUVirtualAddress() + vertex_buffer_offset;
+		vbv.SizeInBytes = (UINT)(g_d3d_raster.line_count * 2 * sizeof(RT_RasterLineVertex));
+		vbv.StrideInBytes = sizeof(RT_RasterLineVertex);
 
-	command_list->IASetVertexBuffers(0, 1, &vbv);
-	command_list->DrawInstanced((UINT)(g_d3d_raster.line_count * 2), 1, 0, 0);
+		command_list->IASetVertexBuffers(0, 1, &vbv);
+		command_list->DrawInstanced((UINT)(g_d3d_raster.line_count * 2), 1, 0, 0);
 
-	g_d3d_raster.line_at += g_d3d_raster.line_count;
-	g_d3d_raster.line_count = 0;
+		g_d3d_raster.line_at += g_d3d_raster.line_count;
+		g_d3d_raster.line_count = 0;
+	}
 
 	g_d3d.command_queue_direct->ExecuteCommandList(command_list);
 }
@@ -3773,12 +4377,12 @@ void RenderBackend::RasterRenderDebugLines()
 
 	if (g_d3d.io.debug_line_depth_enabled)
 	{
-		command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv, FALSE, &g_d3d_raster.depth_target_dsv);
+		command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv.cpu, FALSE, &g_d3d_raster.depth_target_dsv);
 		command_list->SetPipelineState(g_d3d_raster.debug_line_state_depth);
 	}
 	else
 	{
-		command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv, FALSE, nullptr);
+		command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv.cpu, FALSE, nullptr);
 		command_list->SetPipelineState(g_d3d_raster.debug_line_state);
 	}
 
@@ -3809,6 +4413,88 @@ void RenderBackend::RasterRenderDebugLines()
 	g_d3d.command_queue_direct->ExecuteCommandList(command_list);
 }
 
+void RenderBackend::RasterBlitScene(const RT_Vec2* top_left, const RT_Vec2* bottom_right, bool blit_blend)
+{
+	// NOTES(Justin):
+	// - Raster blit will cause aliasing (currently using linear sampler to counter this a bit, but still)
+
+	FlushRingBuffer(&g_d3d.resource_upload_ring_buffer);
+
+	CommandList& command_list = g_d3d.command_queue_direct->GetCommandList();
+	ResourceTransition(command_list, g_d3d.rt.scene, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+	ResourceTransition(command_list, g_d3d.rt.color_final, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+	FrameData* frame = CurrentFrameData();
+	auto CreateRenderTargetSRV = [&](RenderTarget rt, D3D12GlobalDescriptors descriptor)
+	{
+		RT_ASSERT((descriptor >= D3D12GlobalDescriptors_SRV_START && descriptor < D3D12GlobalDescriptors_CBV_START) ||
+			(descriptor >= D3D12GlobalDescriptors_SRV_RT_START && descriptor < D3D12GlobalDescriptors_COUNT));
+		CreateTextureSRV(g_d3d.render_targets[rt], frame->descriptors.GetCPUDescriptor(descriptor), g_d3d.render_target_formats[rt]);
+	};
+	CreateRenderTargetSRV(RenderTarget_scene, D3D12GlobalDescriptors_SRV_scene);
+
+	ID3D12DescriptorHeap* heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
+	command_list->SetDescriptorHeaps(1, heaps);
+
+	// TopLeftX, TopLeftY, width, height, minDepth, maxDepth
+	D3D12_VIEWPORT viewport = { top_left->x, top_left->y, bottom_right->x - top_left->x, bottom_right->y - top_left->y, 0.0f, 1.0f };
+	command_list->RSSetViewports(1, &viewport);
+	D3D12_RECT scissor_rect = { 0, 0, LONG_MAX, LONG_MAX };
+	command_list->RSSetScissorRects(1, &scissor_rect);
+	command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv.cpu, FALSE, nullptr);
+
+	command_list->SetPipelineState(g_d3d_raster.blit_state);
+	command_list->SetGraphicsRootSignature(g_d3d_raster.blit_root_sig);
+	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	command_list->SetGraphicsRoot32BitConstant(0, (UINT)top_left->x, 0);
+	command_list->SetGraphicsRoot32BitConstant(0, (UINT)top_left->y, 1);
+	command_list->SetGraphicsRoot32BitConstant(0, (UINT)viewport.Width, 2);
+	command_list->SetGraphicsRoot32BitConstant(0, (UINT)viewport.Height, 3);
+	command_list->SetGraphicsRoot32BitConstant(0, (UINT)blit_blend, 4);
+	command_list->SetGraphicsRootDescriptorTable(1, frame->descriptors.GetGPUDescriptor(D3D12GlobalDescriptors_SRV_scene));
+	command_list->DrawInstanced(6, 1, 0, 0);
+
+	g_d3d.command_queue_direct->ExecuteCommandList(command_list);
+}
+
+void RenderBackend::RasterBlit(RT_ResourceHandle src, const RT_Vec2* top_left, const RT_Vec2* bottom_right, bool blit_blend)
+{
+	FlushRingBuffer(&g_d3d.resource_upload_ring_buffer);
+
+	TextureResource* src_texture = g_texture_slotmap.Find(src);
+	if (ALWAYS(src_texture))
+	{
+		CommandList& command_list = g_d3d.command_queue_direct->GetCommandList();
+		ResourceTransition(command_list, g_d3d.rt.scene, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+		ResourceTransition(command_list, g_d3d.rt.color_final, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+		ID3D12DescriptorHeap* heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
+		command_list->SetDescriptorHeaps(1, heaps);
+
+		// TopLeftX, TopLeftY, width, height, minDepth, maxDepth
+		D3D12_VIEWPORT viewport = { top_left->x, top_left->y, bottom_right->x - top_left->x, bottom_right->y - top_left->y, 0.0f, 1.0f };
+		command_list->RSSetViewports(1, &viewport);
+		D3D12_RECT scissor_rect = { 0, 0, LONG_MAX, LONG_MAX };
+		command_list->RSSetScissorRects(1, &scissor_rect);
+		command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv.cpu, FALSE, nullptr);
+
+		command_list->SetPipelineState(g_d3d_raster.blit_state);
+		command_list->SetGraphicsRootSignature(g_d3d_raster.blit_root_sig);
+		command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		command_list->SetGraphicsRoot32BitConstant(0, (UINT)top_left->x, 0);
+		command_list->SetGraphicsRoot32BitConstant(0, (UINT)top_left->y, 1);
+		command_list->SetGraphicsRoot32BitConstant(0, (UINT)viewport.Width, 2);
+		command_list->SetGraphicsRoot32BitConstant(0, (UINT)viewport.Height, 3);
+		command_list->SetGraphicsRoot32BitConstant(0, (UINT)blit_blend, 4);
+		command_list->SetGraphicsRootDescriptorTable(1, src_texture->descriptors.gpu);
+		command_list->DrawInstanced(6, 1, 0, 0);
+
+		g_d3d.command_queue_direct->ExecuteCommandList(command_list);
+	}
+}
+
 void RenderBackend::RenderImGuiTexture(RT_ResourceHandle texture_handle, float width, float height)
 {
 	TextureResource *res = g_texture_slotmap.Find(texture_handle);
@@ -3831,7 +4517,7 @@ void RenderBackend::RenderImGui()
 		ImDrawData* draw_data = ImGui::GetDrawData();
 		if (draw_data)
 		{
-			command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv, FALSE, nullptr);
+			command_list->OMSetRenderTargets(1, &g_d3d.color_final_rtv.cpu, FALSE, nullptr);
 
 			ID3D12DescriptorHeap* imgui_heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
 			command_list->SetDescriptorHeaps(RT_ARRAY_COUNT(imgui_heaps), imgui_heaps);

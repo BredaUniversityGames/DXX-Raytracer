@@ -99,10 +99,6 @@ int num_objects=0;
 int Highest_object_index=0;
 int Highest_ever_object_index=0;
 
-#ifdef RT_DX12
-RT_SubmodelTransforms g_rt_prev_submodel_transforms[MAX_OBJECTS];
-#endif
-
 // grs_bitmap *robot_bms[MAX_ROBOT_BITMAPS];	//all bitmaps for all robots
 
 // int robot_bm_nums[MAX_ROBOT_TYPES];		//starting bitmap num for each robot

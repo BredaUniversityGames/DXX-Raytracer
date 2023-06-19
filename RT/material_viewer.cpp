@@ -11,6 +11,8 @@
 extern "C"
 {
 	#include "piggy.h"
+	#include "3d.h"
+	#include "globvars.h"
 };
 
 #include "material_viewer.h"
@@ -47,6 +49,8 @@ struct RT_MaterialViewer
 
 	bool picker_open;
 	bool highlight_blackbodies;
+	bool highlight_no_casting_shadows;
+	bool highlight_lights;
 	bool highlight_has_normal_map;
 	bool highlight_has_metalness_map;
 	bool highlight_has_roughness_map;
@@ -56,6 +60,23 @@ struct RT_MaterialViewer
 
 	bool editing;
 	bool recenter_on_selection;
+	bool suppress_hotkeys;
+
+	float model_distance = 20.0f;
+	float model_offset_x = 5.5f;
+	float model_rotation_x;
+	float model_rotation_dx;
+	float model_rotation_y = 42.0f;
+	float model_rotation_dy;
+	float model_rotation_z;
+
+	bool show_3d_preview = true;
+	uint32_t currently_rendering_material_index;
+	float render_next_material_timer;
+	float render_next_material_speed = 2.0f;
+
+	float spin_speed;
+	float spin_offset;
 
 	RT_MaterialMeta meta[RT_MAX_TEXTURES];
 
@@ -197,6 +218,56 @@ static void SelectMaterial(uint16_t bm_index)
 
 	viewer.selected_materials[insert_index] = bm_index;
 	viewer.selected_material_count++;
+}
+
+static void DeselectMaterial(uint16_t bm_index)
+{
+	if (viewer.selected_material_count > 0)
+	{
+		size_t remove_index;
+		for (remove_index = 0; remove_index < viewer.selected_material_count; remove_index++)
+		{
+			if (bm_index == viewer.selected_materials[remove_index])
+			{
+				break;
+			}
+		}
+
+		if (remove_index != viewer.selected_material_count)
+		{
+			memmove(&viewer.selected_materials[remove_index],
+					&viewer.selected_materials[remove_index + 1],
+					sizeof(uint16_t)*(viewer.selected_material_count - (remove_index + 1)));
+			viewer.selected_material_count--;
+		}
+	}
+}
+
+static bool MaterialIsSelected(uint16_t bm_index)
+{
+	bool is_selected = false;
+	for (size_t i = 0; i < viewer.selected_material_count; i++)
+	{
+		if (viewer.selected_materials[i] == bm_index)
+		{
+			is_selected = true;
+			break;
+		}
+	}
+
+	return is_selected;
+}
+
+static void ToggleSelectMaterial(uint16_t bm_index)
+{
+	if (MaterialIsSelected(bm_index))
+	{
+		DeselectMaterial(bm_index);
+	}
+	else
+	{
+		SelectMaterial(bm_index);
+	}
 }
 
 static void SelectAll()
@@ -374,14 +445,9 @@ static void SaveIfModified(uint16_t bm_index)
 
 		if (changes & RT_MaterialModifiedFlags_Flags)
 		{
-			if (material->flags & RT_MaterialFlag_BlackbodyRadiator)
-			{
-				RT_ConfigWriteInt(&cfg, RT_StringLiteral("blackbody"), 1);
-			}
-			else
-			{
-				RT_ConfigWriteInt(&cfg, RT_StringLiteral("blackbody"), 0);
-			}
+			RT_ConfigWriteInt(&cfg, RT_StringLiteral("blackbody"), !!(material->flags & RT_MaterialFlag_BlackbodyRadiator));
+			RT_ConfigWriteInt(&cfg, RT_StringLiteral("no_casting_shadow"), !!(material->flags & RT_MaterialFlag_NoCastingShadow));
+			RT_ConfigWriteInt(&cfg, RT_StringLiteral("is_light"), !!(material->flags & RT_MaterialFlag_Light));
 		}
 
 		char bitmap_name[13];
@@ -442,7 +508,7 @@ void RT_DoMaterialViewerMenus()
 		viewer.initialized = true;
 	}
 
-	if (io.WantCaptureKeyboard)
+	if (io.WantCaptureKeyboard && !viewer.suppress_hotkeys)
 	{
 		if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A))
 		{
@@ -544,6 +610,8 @@ void RT_DoMaterialViewerMenus()
 			{
 				ImGui::Checkbox("Filter on Highlighted", &viewer.filter_on_highlighted);
 				ImGui::Checkbox("Highlight: Is Blackbody", &viewer.highlight_blackbodies);
+				ImGui::Checkbox("Highlight: Not casting shadows", &viewer.highlight_no_casting_shadows);
+				ImGui::Checkbox("Highlight: Is Light", &viewer.highlight_lights);
 				ImGui::Checkbox("Highlight: Has Normal Map", &viewer.highlight_has_normal_map);
 				ImGui::Checkbox("Highlight: Has Metalness Map", &viewer.highlight_has_metalness_map);
 				ImGui::Checkbox("Highlight: Has Roughness Map", &viewer.highlight_has_roughness_map);
@@ -603,6 +671,8 @@ void RT_DoMaterialViewerMenus()
 				bool rejected_by_filter = false;
 
 				bool is_blackbody = (material->flags & RT_MaterialFlag_BlackbodyRadiator);
+				bool is_no_casting_shadow = (material->flags & RT_MaterialFlag_NoCastingShadow);
+				bool is_light = (material->flags & RT_MaterialFlag_Light);
 				bool has_normal = RT_RESOURCE_HANDLE_VALID(material->normal_texture);
 				bool has_metalness = RT_RESOURCE_HANDLE_VALID(material->metalness_texture);
 				bool has_roughness = RT_RESOURCE_HANDLE_VALID(material->roughness_texture);
@@ -611,6 +681,8 @@ void RT_DoMaterialViewerMenus()
 				if (viewer.filter_on_highlighted)
 				{
 					if (viewer.highlight_blackbodies && !is_blackbody) rejected_by_filter = true;
+					if (viewer.highlight_no_casting_shadows && !is_no_casting_shadow) rejected_by_filter = true;
+					if (viewer.highlight_lights && !is_light) rejected_by_filter = true;
 					if (viewer.highlight_has_normal_map && !has_normal) rejected_by_filter = true;
 					if (viewer.highlight_has_metalness_map && !has_metalness) rejected_by_filter = true;
 					if (viewer.highlight_has_roughness_map && !has_roughness) rejected_by_filter = true;
@@ -668,14 +740,19 @@ void RT_DoMaterialViewerMenus()
 				}
 
 				RT_RenderImGuiTexture(material->albedo_texture, 64, height);
-
 				ImGui::SetCursorPos(image_cursor_pos);
+
+				if (RT_RESOURCE_HANDLE_VALID(material->emissive_texture))
+				{
+					RT_RenderImGuiTexture(material->emissive_texture, 64, height);
+					ImGui::SetCursorPos(image_cursor_pos);
+				}
 
 				if (ImGui::InvisibleButton(RT_ArenaPrintF(temp, "material_button_%d", bm_index), ImVec2(64, 64)))
 				{
 					if (io.KeyCtrl)
 					{
-						SelectMaterial(bm_index);
+						ToggleSelectMaterial(bm_index);
 					}
 					else if (io.KeyShift)
 					{
@@ -694,8 +771,23 @@ void RT_DoMaterialViewerMenus()
 					}
 					else
 					{
-						viewer.selected_material_count = 0;
-						SelectMaterial(bm_index);
+						if (viewer.selected_material_count > 1)
+						{
+							viewer.selected_material_count = 0;
+							SelectMaterial(bm_index);
+						}
+						else
+						{
+							if (MaterialIsSelected(bm_index))
+							{
+								DeselectMaterial(bm_index);
+							}
+							else
+							{
+								viewer.selected_material_count = 0;
+								SelectMaterial(bm_index);
+							}
+						}
 					}
 				}
 
@@ -731,6 +823,16 @@ void RT_DoMaterialViewerMenus()
 				if (viewer.highlight_blackbodies && is_blackbody)
 				{
 					draw_list->AddRect(img_min, img_max, ImColor(0.5f, 1.0f, 1.0f, 0.25f));
+				}
+
+				if (viewer.highlight_no_casting_shadows && is_no_casting_shadow)
+				{
+					draw_list->AddRect(img_min, img_max, ImColor(0.5f, 1.0f, 1.0f, 0.25f));
+				}
+
+				if (viewer.highlight_lights && is_light)
+				{
+					draw_list->AddRect(img_min, img_max, ImColor(1.0f, 1.0f, 0.0f, 0.25f));
 				}
 
 				if (viewer.highlight_has_normal_map && has_normal)
@@ -785,6 +887,8 @@ void RT_DoMaterialViewerMenus()
 		} ImGui::EndChild();
 
 		viewer.recenter_on_selection |= ImGui::InputText("Filter Textures", viewer.texture_filter, sizeof(viewer.texture_filter));
+		viewer.suppress_hotkeys = ImGui::IsItemActive();
+		
 		ImGui::SameLine();
 		ImGui::TextDisabled("(?)");
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
@@ -794,6 +898,10 @@ void RT_DoMaterialViewerMenus()
 			ImGui::TextUnformatted("Type #[number] where number is some index to find a material with a specific index.");
 			ImGui::PopTextWrapPos();
 			ImGui::EndTooltip();
+		}
+		if (ImGui::Button("Recenter Selection"))
+		{
+			viewer.recenter_on_selection = true;
 		}
 		ImGui::Separator();
 
@@ -806,7 +914,17 @@ void RT_DoMaterialViewerMenus()
 		}
 		else if (viewer.selected_material_count > 1)
 		{
-			ImGui::Text("Bitmap: Multiple");
+			uint16_t first_bitmap_index = viewer.selected_materials[0];
+
+			char first_bitmap[13] = "Invalid";
+			piggy_get_bitmap_name(first_bitmap_index, first_bitmap);
+
+			uint16_t last_bitmap_index = viewer.selected_materials[viewer.selected_material_count - 1];
+
+			char last_bitmap[13] = "Invalid";
+			piggy_get_bitmap_name(last_bitmap_index, last_bitmap);
+
+			ImGui::Text("Bitmap #%hu..#%hu: %s .. %s", first_bitmap_index, last_bitmap_index, first_bitmap, last_bitmap);
 		}
 		else
 		{
@@ -867,6 +985,34 @@ void RT_DoMaterialViewerMenus()
 				ImGui::BeginTooltip();
 				ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
 				ImGui::TextUnformatted("A Blackbody Radiator is a material that is entirely emissive and reflects no light that hits it. Selecting this option makes the renderer treat the base color as the emissive color and disables any kind of shading for the material.");
+				ImGui::PopTextWrapPos();
+				ImGui::EndTooltip();
+			}
+
+			bool no_casting_shadow = first_material->flags & RT_MaterialFlag_NoCastingShadow;
+			bool no_casting_shadow_changed = ImGui::Checkbox("No casting shadow", &no_casting_shadow);
+			active |= ImGui::IsItemActive();
+			ImGui::SameLine();
+			ImGui::TextDisabled("(?)");
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+			{
+				ImGui::BeginTooltip();
+				ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+				ImGui::TextUnformatted("Determines if the mesh using this material should cast a shadow.");
+				ImGui::PopTextWrapPos();
+				ImGui::EndTooltip();
+			}
+
+			bool is_light = first_material->flags & RT_MaterialFlag_Light;
+			bool is_light_changed = ImGui::Checkbox("Is Light", &is_light);
+			active |= ImGui::IsItemActive();
+			ImGui::SameLine();
+			ImGui::TextDisabled("(?)");
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+			{
+				ImGui::BeginTooltip();
+				ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+				ImGui::TextUnformatted("Whether this material is represented in the scene as an actual area light.");
 				ImGui::PopTextWrapPos();
 				ImGui::EndTooltip();
 			}
@@ -1003,6 +1149,8 @@ void RT_DoMaterialViewerMenus()
 			}
 
 			if (blackbody_changed ||
+				no_casting_shadow_changed ||
+				is_light_changed ||
 				metalness_changed ||
 				roughness_changed ||
 				emissive_changed)
@@ -1026,16 +1174,13 @@ void RT_DoMaterialViewerMenus()
 					RT_Material *material = &g_rt_materials[material_index];
 
 					if (blackbody_changed)
-					{
-						if (blackbody)
-						{
-							material->flags |= RT_MaterialFlag_BlackbodyRadiator;
-						}
-						else
-						{
-							material->flags &= ~RT_MaterialFlag_BlackbodyRadiator;
-						}
-					}
+						material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_BlackbodyRadiator, blackbody);
+
+					if (no_casting_shadow_changed)
+						material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_NoCastingShadow, no_casting_shadow);
+
+					if (is_light_changed)
+						material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_Light, is_light);
 
 					if (metalness_changed)
 					{
@@ -1068,6 +1213,21 @@ void RT_DoMaterialViewerMenus()
 				}
 			}
 		}
+
+		ImGui::Separator();
+		ImGui::Text("3D Preview");
+		ImGui::SameLine();
+		ImGui::TextDisabled("(?)");
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+		{
+			ImGui::BeginTooltip();
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+			ImGui::TextUnformatted("Hold LMB to rotate the plane, RMB to move it left/right and forward/back.");
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
+		}
+		ImGui::Checkbox("Show 3D Preview", &viewer.show_3d_preview);
+		ImGui::SliderFloat("Animation Speed", &viewer.render_next_material_speed, 1.0f, 60.0f);
 
 		if (viewer.show_undo_redo_debug)
 		{
@@ -1147,5 +1307,106 @@ void RT_DoMaterialViewerMenus()
 
 void RT_RenderMaterialViewer()
 {
+	float dt = 1.0f / 60.0f;
 
+	if (viewer.show_3d_preview && viewer.selected_material_count > 0)
+	{
+		int current_index = viewer.currently_rendering_material_index;
+
+		if (viewer.render_next_material_timer <= 0.0f)
+		{
+			float time_per_material = 1.0f / viewer.render_next_material_speed;
+			viewer.render_next_material_timer = time_per_material;
+		}
+		else
+		{
+			viewer.render_next_material_timer -= dt;
+
+			if (viewer.render_next_material_timer <= 0.0f)
+			{
+				viewer.currently_rendering_material_index++;
+				if (viewer.currently_rendering_material_index >= viewer.selected_material_count)
+				{
+					viewer.currently_rendering_material_index = 0;
+				}
+			}
+		}
+
+		grs_bitmap *bitmap = &GameBitmaps[viewer.selected_materials[current_index]];
+
+		float width  = 5.0f;
+		float height = 5.0f;
+		if (bitmap->bm_w > bitmap->bm_h)
+		{
+			float aspect = (float)bitmap->bm_h / (float)bitmap->bm_w;
+			height *= aspect;
+		}
+		else
+		{
+			float aspect = (float)bitmap->bm_w / (float)bitmap->bm_h;
+			height *= aspect;
+		}
+
+		ImGuiIO &io = ImGui::GetIO();
+
+		if (!io.WantCaptureMouse)
+		{
+			if (io.MouseDown[1])
+			{
+				viewer.model_distance -= 0.001f*io.MouseDelta.y*viewer.model_distance;
+				viewer.model_offset_x += 0.01f*io.MouseDelta.x;
+			}
+			else if (io.MouseDown[0])
+			{
+				viewer.model_rotation_dy -= io.MouseDelta.x;
+				viewer.model_rotation_dx += io.MouseDelta.y;
+			}
+		}
+
+		viewer.model_rotation_x += dt*viewer.model_rotation_dx;
+		viewer.model_rotation_y += dt*viewer.model_rotation_dy;
+		viewer.model_rotation_dx *= 0.95f;
+		viewer.model_rotation_dy *= 0.95f;
+
+		if (viewer.model_rotation_x < -180.0f)
+			viewer.model_rotation_x += 360.0f;
+
+		if (viewer.model_rotation_x >  180.0f)
+			viewer.model_rotation_x -= 360.0f;
+
+		if (viewer.model_rotation_y < -180.0f)
+			viewer.model_rotation_y += 360.0f;
+
+		if (viewer.model_rotation_y >  180.0f)
+			viewer.model_rotation_y -= 360.0f;
+
+		viewer.model_distance = RT_CLAMP(viewer.model_distance, 10.0f, 200.0f);
+
+		RT_Vec3 view_p = RT_Vec3Make(f2fl(View_position.x), f2fl(View_position.y), f2fl(View_position.z));
+		RT_Vec3 view_f = RT_Vec3Normalize(RT_Vec3Make(f2fl(View_matrix.fvec.x), f2fl(View_matrix.fvec.y), f2fl(View_matrix.fvec.z)));
+		RT_Vec3 view_u = RT_Vec3Normalize(RT_Vec3Make(f2fl(View_matrix.uvec.x), f2fl(View_matrix.uvec.y), f2fl(View_matrix.uvec.z)));
+		RT_Vec3 view_r = RT_Vec3Normalize(RT_Vec3Make(f2fl(View_matrix.rvec.x), f2fl(View_matrix.rvec.y), f2fl(View_matrix.rvec.z)));
+		RT_Mat4 T = RT_Mat4FromTranslation(view_p + viewer.model_distance*view_f + viewer.model_offset_x*view_r);
+		RT_Mat4 basis = RT_Mat4FromBasisVectors(view_r, view_u, view_f);
+		RT_Mat4 Rx = RT_Mat4FromXRotation(RT_RadiansFromDegrees(viewer.model_rotation_x));
+		RT_Mat4 Ry = RT_Mat4FromYRotation(RT_RadiansFromDegrees(viewer.model_rotation_y + 180.0f - viewer.spin_offset));
+		RT_Mat4 Rz = RT_Mat4FromZRotation(RT_RadiansFromDegrees(viewer.model_rotation_z));
+		RT_Mat4 R = basis*Ry*Rx*Rz;
+		RT_Mat4 S = RT_Mat4FromScale(RT_Vec3Make(width, height, 1.0f));
+		RT_Mat4 transform = T*R*S;
+
+		RT_RenderMeshParams params = {};
+		params.mesh_handle       = RT_GetBillboardMesh();
+		params.color             = 0xFFFFFFFF;
+		params.key.value         = 0x800815;
+		params.material_override = viewer.selected_materials[current_index];
+		params.transform         = &transform;
+		RT_RaytraceMeshEx(&params);
+
+		viewer.spin_offset += 45.0f*viewer.spin_speed / 60.0f; // Assumes hardcoded 60 fps. Silly but it's a debug tool, don't care to figure out where frametime is kept.
+		if (viewer.spin_offset > 360.0f)
+		{
+			viewer.spin_offset -= 360.0f;
+		}
+	}
 }

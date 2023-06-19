@@ -84,6 +84,16 @@ RT_ResourceHandle RT_GetDefaultBlackTexture(void)
 	return RenderBackend::GetDefaultBlackTexture();
 }
 
+RT_ResourceHandle RT_GetBillboardMesh(void)
+{
+	return RenderBackend::GetBillboardMesh();
+}
+
+RT_ResourceHandle RT_GetCubeMesh(void)
+{
+	return RenderBackend::GetCubeMesh();
+}
+
 int RT_CheckWindowMinimized(void) {
 	return RenderBackend::CheckWindowMinimized();
 }
@@ -175,6 +185,11 @@ RT_ResourceHandle RT_UploadMesh(const RT_UploadMeshParams* params)
 	return RenderBackend::UploadMesh(*params);
 }
 
+void RT_ReleaseTexture(const RT_ResourceHandle texture_handle)
+{
+	RenderBackend::ReleaseTexture(texture_handle);
+}
+
 void RT_ReleaseMesh(const RT_ResourceHandle mesh_handle)
 {
 	RenderBackend::ReleaseMesh(mesh_handle);
@@ -261,6 +276,15 @@ void RT_RasterSetViewport(float x, float y, float width, float height)
 	RenderBackend::RasterSetViewport(x, y, width, height);
 }
 
+void RT_RasterSetRenderTarget(RT_ResourceHandle texture)
+{
+	RenderBackend::RasterSetRenderTarget(texture);
+}
+
+uint32_t RT_RaytraceGetCurrentLightCount() {
+	return RenderBackend::RaytraceGetCurrentLightCount();
+}
+
 void RT_RaytraceSetVerticalOffset(const float new_offset) {
     RenderBackend::RaytraceSetVerticalOffset(new_offset);
 }
@@ -284,7 +308,7 @@ void RT_RasterLines(RT_RasterLineVertex* vertices, uint32_t num_vertices)
 	RenderBackend::RasterLines(vertices, num_vertices);
 }
 
-void RT_DrawLineWorld(RT_Vec3 a, RT_Vec3 b, RT_Vec4 color)
+void RT_RasterLineWorld(RT_Vec3 a, RT_Vec3 b, RT_Vec4 color)
 {
 	RT_RasterLineVertex vertices[2];
 	vertices[0].pos = a;
@@ -298,6 +322,16 @@ void RT_DrawLineWorld(RT_Vec3 a, RT_Vec3 b, RT_Vec4 color)
 void RT_RasterLinesWorld(RT_RasterLineVertex* vertices, uint32_t num_vertices)
 {
 	RenderBackend::RasterLinesWorld(vertices, num_vertices);
+}
+
+void RT_RasterBlitScene(const RT_Vec2* top_left, const RT_Vec2* bottom_right, bool blit_blend)
+{
+	RenderBackend::RasterBlitScene(top_left, bottom_right, blit_blend);
+}
+
+void RT_RasterBlit(RT_ResourceHandle src, const RT_Vec2* top_left, const RT_Vec2* bottom_right, bool blit_blend)
+{
+	RenderBackend::RasterBlit(src, top_left, bottom_right, blit_blend);
 }
 
 void RT_RasterRender()

@@ -534,6 +534,17 @@ int HandleSystemKey(int key)
 		{
 			gr_toggle_fullscreen();
 		} break;
+
+		case KEY_SHIFTED + KEY_ALTED + KEY_F:
+		{
+			if (!g_rt_free_cam_info.g_free_cam_enabled) {
+				RT_EnableFreeCam();
+			}
+			else {
+				RT_DisableFreeCam();
+			}
+			break;
+		}
 #endif
 
 		KEY_MAC( case KEY_COMMAND+KEY_P: )
@@ -579,8 +590,13 @@ int HandleSystemKey(int key)
 
 		KEY_MAC(case KEY_COMMAND+KEY_3:)
 		case KEY_F3:
-			if (!Player_is_dead)
+			if (!Player_is_dead) {
+#ifdef RT_DX12
+				if (g_rt_free_cam_info.g_free_cam_enabled)
+					break;
+#endif
 				toggle_cockpit();
+			}
 			break;
 
 		KEY_MAC(case KEY_COMMAND+KEY_5:)
@@ -1350,19 +1366,20 @@ int ReadControls(d_event *event)
 	} else {
 		exploding_flag=0;
 	}
-	if (Player_is_dead && !( (Game_mode & GM_MULTI) && (multi_sending_message[Player_num] || multi_defining_message) ))
+	if (Player_is_dead && !((Game_mode & GM_MULTI) && (multi_sending_message[Player_num] || multi_defining_message))) {
 		if (HandleDeathInput(event)) {
-			if( (Game_mode & GM_MULTI) && (Netgame.SpawnStyle == SPAWN_STYLE_PREVIEW) ) {
+			if ((Game_mode & GM_MULTI) && (Netgame.SpawnStyle == SPAWN_STYLE_PREVIEW)) {
 				// fall through to normal key handler
 
 				// Make sure flares/shots go in direction of preview
 				ConsoleObject->orient = Dead_player_camera->orient;
-			} else {
+			}
+			else {
 
 				return 1;
 			}
 		}
-
+	}
 
 	if (Game_mode & GM_OBSERVER && Newdemo_state < ND_STATE_PLAYBACK) {
 		// Force the observer to a certain camera based on whether they are freely observing or observing a specific player.
@@ -1512,6 +1529,11 @@ int ReadControls(d_event *event)
 			}
 		}
 
+#ifdef RT_DX12
+		if (g_rt_free_cam_info.g_free_cam_enabled) {
+			return;
+		}
+#endif
 		do_weapon_n_item_stuff();
 	}
 

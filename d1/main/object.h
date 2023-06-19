@@ -371,14 +371,6 @@ extern object Objects[];
 extern int Highest_object_index;    // highest objnum
 extern int num_objects;
 
-#ifdef RT_DX12
-typedef struct RT_SubmodelTransforms
-{
-	RT_Mat4 transforms[MAX_SUBMODELS];
-} RT_SubmodelTransforms;
-extern RT_SubmodelTransforms g_rt_prev_submodel_transforms[];
-#endif // ifdef RT_DX12
-
 extern char *robot_names[];         // name of each robot
 
 extern int Num_robot_types;

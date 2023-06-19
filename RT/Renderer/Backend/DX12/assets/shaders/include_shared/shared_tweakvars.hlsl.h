@@ -15,6 +15,13 @@
 // TWEAK_COLOR(name, default_value)                                        // RGB color picker
 // TWEAK_OPTIONS(name, default_value, list of options as name-value pairs) // dropdown box
 
+TWEAK_BOOL("Vsync", vsync, true)
+
+TWEAK_CATEGORY_BEGIN("Camera");
+// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
+TWEAK_FLOAT  ("FOV",					   fov,						  60.0,		60.0, 90.0)
+// ------------------------------------------------------------------------------------------------------------------
+TWEAK_CATEGORY_END();
 
 TWEAK_CATEGORY_BEGIN("Pathtracer")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
@@ -24,9 +31,10 @@ TWEAK_BOOL   ("Enable PBR",                enable_pbr,                true)
 TWEAK_BOOL   ("Enable Pathtracing",        enable_pathtracing,        true)
 TWEAK_COLOR  ("Ambient Color",             ambient_color,             (0.05f, 0.07f, 0.1f))
 TWEAK_BOOL   ("Importance Sample BRDF",    importance_sample_brdf,    true)
-TWEAK_OPTIONS("RIS",                       ris,                       2, "Off", "Full", "Subset")
+TWEAK_FLOAT  ("Direct Specular Threshold", direct_specular_threshold, 0.25,     0,    1)
+TWEAK_OPTIONS("RIS",                       ris,                       2, "Off", "Subset", "Full")
 TWEAK_BOOL   ("RIS Indirect",              ris_indirect,              true)
-TWEAK_INT    ("RIS SPP",                   ris_spp,                   4, 1, 16)
+TWEAK_INT    ("RIS SPP",                   ris_spp,                   4,        1,    16)
 TWEAK_BOOL   ("Use Oren-Nayar BRDF",       use_oren_nayar_brdf,       false)
 TWEAK_BOOL   ("Path-space Regularization", path_space_regularization, true)
 TWEAK_BOOL   ("Object Motion Vectors",     object_motion_vectors,     true)
@@ -97,10 +105,19 @@ TWEAK_FLOAT  ("Threshold",                 bloom_threshold,           0.0,      
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END()
 
+TWEAK_CATEGORY_BEGIN("Tonemap")
+// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
+TWEAK_FLOAT("Exposure", exposure, 0.1, -2, 2)
+TWEAK_FLOAT("Linear Section", tonemap_linear_section, 0.25, 0.0, 1.0)
+TWEAK_FLOAT("Whitepoint", tonemap_whitepoint, 8.0, 1.0, 16.0)
+TWEAK_FLOAT("Hue Shift", tonemap_hue_shift, 0.7, 0.0, 1.0)
+// ------------------------------------------------------------------------------------------------------------------
+TWEAK_CATEGORY_END()
+
 TWEAK_CATEGORY_BEGIN("Post-Processing")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
 TWEAK_FLOAT  ("Sharpen",                   sharpen_amount,            2.0,      0,    8)
-TWEAK_FLOAT  ("Gamma",                     gamma,                     0.0,     -1,    1)
+TWEAK_FLOAT  ("Gamma",                     gamma,                    -0.3,     -1,    1)
 TWEAK_FLOAT  ("White Level",               white_level,               1.0,      0,    1)
 TWEAK_FLOAT  ("Black Level",               black_level,               0.0,      0,    1)
 TWEAK_FLOAT  ("Vignette Scale",            vignette_scale,            0.875,    0.5,  1.5)
@@ -113,3 +130,11 @@ TWEAK_CATEGORY_BEGIN("Debug render")
 TWEAK_FLOAT  ("Debug render blend factor", debug_render_blend_factor, 1.0,      0.0,  1.0)
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END()
+
+TWEAK_CATEGORY_BEGIN("Mipmaps")
+// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
+TWEAK_INT    ("Mip Bias",				   mip_bias,				  -1,		-10,  10)
+TWEAK_FLOAT  ("Secondary bounce bias",	   secondary_bounce_bias,	  0.0005,	0.00001, 1.0)
+TWEAK_FLOAT  ("Angle cutoff",			   angle_cutoff,			  0.125,    0.0000001, 1.0)
+// ------------------------------------------------------------------------------------------------------------------
+TWEAK_CATEGORY_END();

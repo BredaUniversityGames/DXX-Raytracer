@@ -26,9 +26,6 @@
 #define TaaNeighborhoodMode_Clip          (2)
 #define TaaNeighborhoodMode_VarianceClip  (3)
 
-// MaterialFlag
-#define RT_MaterialFlag_BlackbodyRadiator (0x1) // things like lava, basically just treats the albedo as an emissive map and skips all shading
-
 // ------------------------------------------------------------------
 // Common structs
 
@@ -89,6 +86,15 @@ struct GlobalConstantBuffer
     float3   sky_color_bottom;
 };
 
+struct GenMipMapSettings
+{
+	uint src_mip;
+	uint num_mips;
+	float2 texel_size;
+	uint src_dim;
+	uint is_srgb;
+};
+
 struct PixelDebugData
 {
 	float4 uv_barycentrics;
@@ -107,7 +113,11 @@ struct PixelDebugData
 #define TWEAK_BOOL(name, var, value) int var;
 #define TWEAK_INT(name, var, value, min, max) int var;
 #define TWEAK_FLOAT(name, var, value, min, max) float var;
+#ifdef __cplusplus
+#define TWEAK_COLOR(name, var, value) alignas(16) float4 var;
+#else
 #define TWEAK_COLOR(name, var, value) float4 var;
+#endif
 #define TWEAK_OPTIONS(name, var, value, ...) int var;
 
 struct TweakVars

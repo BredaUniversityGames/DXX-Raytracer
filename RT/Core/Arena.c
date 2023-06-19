@@ -139,7 +139,7 @@ void *RT_ArenaAllocNoZero_(RT_ARENA_DEBUG_PARAMS RT_Arena *arena, size_t size, s
 
     char *result = NULL;
 
-    if (ALWAYS(RT_ArenaSizeRemainingForAlign(arena, align) >= size))
+    if (size > 0 && ALWAYS(RT_ArenaSizeRemainingForAlign(arena, align) >= size))
     {
 #if defined(RT_ARENA_DEBUG)
         {

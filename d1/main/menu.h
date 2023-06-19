@@ -31,7 +31,13 @@ extern int RegisterPlayer();
 extern int DoMenu();
 extern void do_options_menu();
 extern int select_demo(void);
+#if RT_DX12
+#define Menu_pcx_name (PHYSFSX_exists("assets/splash-logo/MenuRaytraced.png", 1) ? \
+	"assets/splash-logo/MenuRaytraced.png" : \
+	(((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("menuh.pcx",1))?"menuh.pcx":"menu.pcx"))
+#else
 #define Menu_pcx_name (((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("menuh.pcx",1))?"menuh.pcx":"menu.pcx")
+#endif
 #define STARS_BACKGROUND (((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("starsb.pcx",1))?"starsb.pcx":"stars.pcx")
 
 extern char *menu_difficulty_text[];

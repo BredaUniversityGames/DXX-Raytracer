@@ -12,23 +12,23 @@ void IndirectLightingRaygen()
 	uint2 dispatch_idx = DispatchRaysIndex().xy;
 
 	// Get G-buffer values
-	float3 gbuf_albedo = img_albedo[dispatch_idx].xyz;
-	float3 gbuf_normal = DecodeNormalOctahedron(img_normal[dispatch_idx].xy);
-	float3 gbuf_view_dir = img_view_dir[dispatch_idx].xyz;
-	float gbuf_depth = img_depth[dispatch_idx];
-	float gbuf_metallic = img_metallic[dispatch_idx].x;
-	float gbuf_roughness = img_roughness[dispatch_idx].x;
-	uint gbuf_material = img_material[dispatch_idx].x;
-	uint2 gbuf_instance_idx_prim_idx = img_visibility_prim[dispatch_idx].xy;
+	float3 gbuf_albedo                = img_albedo[dispatch_idx].xyz;
+	float3 gbuf_normal                = DecodeNormalOctahedron(img_normal[dispatch_idx].xy);
+	float3 gbuf_view_dir              = img_view_dir[dispatch_idx].xyz;
+	float  gbuf_depth                 = img_depth[dispatch_idx];
+	float  gbuf_metallic              = img_metallic[dispatch_idx].x;
+	float  gbuf_roughness             = img_roughness[dispatch_idx].x;
+	uint   gbuf_material              = img_material[dispatch_idx].x;
+	uint2  gbuf_instance_idx_prim_idx = img_visibility_prim[dispatch_idx].xy;
 
 	if (HasHitGeometry(gbuf_instance_idx_prim_idx))
 	{
 		// Get instance data and hit triangle/material
 		InstanceData instance_data = g_instance_data_buffer[gbuf_instance_idx_prim_idx.x];
-		RT_Triangle hit_triangle = GetHitTriangle(instance_data.triangle_buffer_idx, gbuf_instance_idx_prim_idx.y);
-		Material mat = g_materials[gbuf_material];
+		RT_Triangle  hit_triangle  = GetHitTriangle(instance_data.triangle_buffer_idx, gbuf_instance_idx_prim_idx.y);
+		Material     mat           = g_materials[gbuf_material];
 
-		float4 color_mod = UnpackRGBA(instance_data.material_color) * UnpackRGBA(hit_triangle.color);
+		float4 color_mod = UnpackRGBA(instance_data.material_color)*UnpackRGBA(hit_triangle.color);
 
 		// If material is a black body radiator, we do not want to calculate any indirect lighting for that surface
 		if (!(mat.flags & RT_MaterialFlag_BlackbodyRadiator))
@@ -37,43 +37,32 @@ void IndirectLightingRaygen()
 			gbuf_albedo *= color_mod.rgb;
 
 			MaterialDesc material_desc = (MaterialDesc)0;
-			material_desc.ior = 0.04;
-			material_desc.albedo = gbuf_albedo;
-			material_desc.metallic = gbuf_metallic;
+			material_desc.ior       = 0.04;
+			material_desc.albedo    = gbuf_albedo;
+			material_desc.metallic  = gbuf_metallic;
 			material_desc.roughness = gbuf_roughness;
 
-			float3x3 basis = ConstructOrthonormalBasis(gbuf_normal);
+			float3x3 basis     = ConstructOrthonormalBasis(gbuf_normal);
 			float3x3 basis_inv = transpose(basis);
 
-			// Note(Justin): Do we still need the recursion depth here? Dont think we do
-			float r1 = RandomSample(dispatch_idx, Random_IndirectJitterX + 3 * 0/*payload.recursion*/);
-			float r2 = RandomSample(dispatch_idx, Random_IndirectJitterY + 3 * 0/*payload.recursion*/);
+			float r1 = RandomSample(dispatch_idx, Random_IndirectJitterX);
+			float r2 = RandomSample(dispatch_idx, Random_IndirectJitterY);
 
-			float3 bounce_direction = float3(0, 1, 0);
+			float3 bounce_direction    = float3(0, 1, 0);
 			float3 specular_throughput = 0;
-			float3 diffuse_throughput = 0;
+			float3 diffuse_throughput  = 0;
 
-			float3 N = gbuf_normal;
+			float3 N =  gbuf_normal;
 			float3 V = -gbuf_view_dir;
+
+			bool specular_bounce = false;
 
 			if (tweak.enable_pbr && tweak.importance_sample_brdf)
 			{
+				float r_specular = RandomSample(dispatch_idx, Random_IndirectSpecular);
+
 				float specular_probability = lerp(0.5, 1.0, material_desc.metallic);
-				// Note(Justin): Do we still need the recursion depth here? Dont think we do
-				//if (/*payload.recursion*/0 > 0)
-				//{
-				//	specular_probability = 0;
-				//}
-
-				// Note(Justin): Do we still need the recursion depth here? Dont think we do
-				float r_specular = RandomSample(dispatch_idx, Random_IndirectSpecular + 3 * 0/*payload.recursion*/);
-
-				bool specular_bounce = r_specular <= specular_probability;
-				// Note(Justin): Do we still need the recursion depth here? Dont think we do
-				//if (/*payload.recursion*/0 > 0)
-				//{
-				//	specular_bounce = false;
-				//}
+				specular_bounce = r_specular <= specular_probability;
 
 				if (specular_bounce)
 				{
@@ -173,11 +162,11 @@ void IndirectLightingRaygen()
 
 			// Set up geometry input for primary ray trace
 			PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
-			RayDesc ray_desc = (RayDesc)0;
-			ray_desc.Origin = gbuf_world_p + 0.01f * gbuf_normal;
+			RayDesc ray_desc   = (RayDesc)0;
+			ray_desc.Origin    = gbuf_world_p + 0.01f * gbuf_normal;
 			ray_desc.Direction = bounce_direction;
-			ray_desc.TMin = RT_RAY_T_MIN;
-			ray_desc.TMax = RT_RAY_T_MAX;
+			ray_desc.TMin      = RT_RAY_T_MIN;
+			ray_desc.TMax      = RT_RAY_T_MAX;
 
 			// Trace the primary ray
 			TracePrimaryRay(ray_desc, ray_payload);
@@ -187,17 +176,39 @@ void IndirectLightingRaygen()
 
 			// Get geometry data from primary ray trace
 			GetGeometryDataFromPrimaryRay(ray_desc, ray_payload, 1, geo_ray_output);
+			geo_ray_output.world_p = gbuf_world_p + ray_payload.hit_distance*bounce_direction;
 
 			// Set up direct lighting output
 			DirectLightingOutput direct_lighting_output = (DirectLightingOutput)0;
 
 			CalculateDirectLightingAtSurface(geo_ray_output, direct_lighting_output, true);
 
+			// TODO(daniel): Fetching the material again? Should be optimized away by the compiler
+			Material material = g_materials[geo_ray_output.material_index];
+
 			float3 indirect_color;
 			if (HasHitGeometry(geo_ray_output.vis_prim))
 			{
-				indirect_color = direct_lighting_output.albedo * direct_lighting_output.direct_lighting +
-					direct_lighting_output.emissive_lighting + direct_lighting_output.direct_specular;
+				float direct_light_specular_weight = 1.0f;
+
+				if (material.flags & RT_MaterialFlag_Light)
+				{
+					direct_light_specular_weight = saturate(1.0 - smoothstep(tweak.direct_specular_threshold - 0.1,
+																			 tweak.direct_specular_threshold,
+																			 geo_ray_output.roughness));
+				}
+
+				indirect_color = (direct_lighting_output.albedo*direct_lighting_output.direct_lighting + 
+								  direct_lighting_output.direct_specular);
+
+				if (specular_bounce)
+				{
+					indirect_color += direct_light_specular_weight*geo_ray_output.emissive;
+				}
+				else // if(!(material.flags & RT_MaterialFlag_Light)) // This would be more correct stopping the double counting of lights. But in practice I think it just looks darker but not better, so meh.
+				{
+					indirect_color += geo_ray_output.emissive;
+				}
 			}
 			else
 			{
@@ -205,8 +216,8 @@ void IndirectLightingRaygen()
 				indirect_color = direct_lighting_output.direct_lighting;
 			}
 
-			float3 indirect_specular = specular_throughput * indirect_color;
-			float3 indirect_diffuse = diffuse_throughput * indirect_color;
+			float3 indirect_specular = indirect_color*specular_throughput;
+			float3 indirect_diffuse  = indirect_color*diffuse_throughput;
 
 			if (!tweak.reference_mode && tweak.svgf_enabled)
 			{

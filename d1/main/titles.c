@@ -55,7 +55,12 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #endif
 
 #ifdef RT_DX12
+#include "RTgr.h"
 #include "dx12.h"
+#include "globvars.h"
+#include "Core/Arena.h"
+#include "Core/MiniMath.h"
+#include "ImageReadWrite.h"
 #endif
 
 #define MAX_BRIEFING_COLORS     7
@@ -185,10 +190,24 @@ static int show_title_screen( char * filename, int allow_keys, int from_hog_only
 	return 0;
 }
 
+static int load_the_palette_of_the_title_screen_like_a_fucking_psycho(char * filename)
+{
+	grs_bitmap bitmap;
+	gr_init_bitmap_data(&bitmap);
+
+	int pcx_error;
+
+	if ((pcx_error=pcx_read_bitmap( filename, &bitmap, BM_LINEAR, gr_palette ))!=PCX_ERROR_NONE) {
+		RT_LOGF(RT_LOGSERVERITY_HIGH, "Error loading briefing screen <%s>, PCX load error: %s (%i)\n",filename, pcx_errormsg(pcx_error), pcx_error);
+	}
+
+	gr_palette_load(gr_palette);
+	gr_free_bitmap_data(&bitmap);
+}
+
 void show_titles(void)
 {
 	char    publisher[PATH_MAX];
-	char	buasLogo[PATH_MAX];
 
 	songs_play_song( SONG_TITLE, 1 );
 
@@ -201,14 +220,31 @@ void show_titles(void)
 	if (!PHYSFSX_exists(publisher,1))
 		strcpy(publisher, "iplogo1.pcx");	// PC. Only down here because it's lowres ;-)
 
-	if (!PHYSFSX_exists("assets/splash-logo/buas.pcx", 1))
-		RT_LOG(RT_LOGSERVERITY_ASSERT, "Cannot find BUAS splash logo");
-	strcpy(buasLogo, "assets/splash-logo/buas.pcx");
+	show_title_screen(publisher, 1, 0);
+	show_title_screen((((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("logoh.pcx",1))?"logoh.pcx":"logo.pcx"), 1, 0);
 
-	show_title_screen( publisher, 1, 1 );
-	show_title_screen( (((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("logoh.pcx",1))?"logoh.pcx":"logo.pcx"), 1, 1 );
-	show_title_screen( buasLogo, 1, 0 );
-	show_title_screen( (((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("descenth.pcx",1))?"descenth.pcx":"descent.pcx"), 1, 1 );
+	if (PHYSFSX_exists("assets/splash-logo/buas.pcx", 1))
+		show_title_screen("assets/splash-logo/buas.pcx", 1, 0);
+
+#if RT_DX12
+	if (PHYSFSX_exists("assets/splash-logo/LogoRaytraced.png", 1))
+	{
+		show_title_screen("assets/splash-logo/LogoRaytraced.png", 1, 0);
+		// FOR SOME REASON BEYOND HUMAN UNDERSTANDING WHEN THE TITLE SCREEN IS LOADED
+		// THE CODE ALSO READS OUT THE PALETTE FROM THE PCX FILE OF THE TITLE SCREEN
+		// AND THEN USES THAT AS THE PALETTE TO DECODE ALL THE OTHER GAME TEXTURES.
+		// YES, LOADING THE TITLE SCREEN IS MISSION CRITICAL TO THE GAME, AND IF YOU
+		// DON'T DO IT OR DO IT IN THE WRONG ORDER THE GAME TEXTURES GET ALL SCREWED
+		// UP. ARE YOU MAD.
+		load_the_palette_of_the_title_screen_like_a_fucking_psycho((((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("descenth.pcx", 1)) ? "descenth.pcx" : "descent.pcx"), 1, 0);
+	}
+	else
+	{
+		show_title_screen((((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("descenth.pcx", 1)) ? "descenth.pcx" : "descent.pcx"), 1, 0);
+	}
+#else
+	show_title_screen( (((SWIDTH>=640&&SHEIGHT>=480) && PHYSFSX_exists("descenth.pcx",1))?"descenth.pcx":"descent.pcx"), 1, 0 );
+#endif
 }
 
 void show_order_form()
@@ -1095,6 +1131,36 @@ static int briefing_handler(window *wind, d_event *event, briefing *br)
 		}
 
 		case EVENT_WINDOW_DRAW:
+#ifdef RT_DX12
+			RT_Vec2 top_left_blit;
+			RT_Vec2 bottom_right_blit;
+			bool raytrace_enemy = br->robot_num != -1;
+
+			if (raytrace_enemy)
+			{
+				RT_BeginFrame();
+				RT_StartImGuiFrame();
+
+				top_left_blit = RT_Vec2Make((float)br->robot_canv->cv_bitmap.bm_x, (float)br->robot_canv->cv_bitmap.bm_y);
+				bottom_right_blit = RT_Vec2Make((float)br->robot_canv->cv_bitmap.bm_x + (float)br->robot_canv->cv_bitmap.bm_w, (float)br->robot_canv->cv_bitmap.bm_y + (float)br->robot_canv->cv_bitmap.bm_h);
+
+				RT_SceneSettings scene_settings = { 0 };
+				scene_settings.camera = RT_ArenaAllocStruct(&g_thread_arena, RT_Camera);
+				scene_settings.camera->position = RT_Vec3Fromvms_vector(&View_position);
+				scene_settings.camera->right = RT_Vec3Fromvms_vector(&View_matrix.rvec);
+				scene_settings.camera->up = RT_Vec3Fromvms_vector(&View_matrix.uvec);
+				scene_settings.camera->forward = RT_Vec3Fromvms_vector(&View_matrix.fvec);
+				scene_settings.camera->vfov = 60.0f;
+				scene_settings.camera->near_plane = 0.1f;
+				scene_settings.camera->far_plane = 10000.0f;
+				scene_settings.render_blit = true;
+
+				RT_BeginScene(&scene_settings);
+				RT_Light light = RT_MakeSphericalLight(RT_Vec3Make(100.0f, 100.0f, 100.0f), RT_Vec3Make(70.0f, 70.0f, -5.0f), 20.0f);
+				RT_RaytraceSubmitLight(light);
+			}
+#endif
+
 			gr_set_current_canvas(NULL);
 
 			timer_delay2(50);
@@ -1116,7 +1182,9 @@ static int briefing_handler(window *wind, d_event *event, briefing *br)
 			if (br->bitmap_name[0] != 0)
 				show_animated_bitmap(br);
 			if (br->robot_num != -1)
+			{
 				show_spinning_robot_frame(br, br->robot_num);
+			}
 
 			gr_set_curfont( GAME_FONT );
 
@@ -1127,6 +1195,20 @@ static int briefing_handler(window *wind, d_event *event, briefing *br)
 				flash_cursor(br, br->flashing_cursor);
 			else if (br->flashing_cursor)
 				gr_printf(br->text_x, br->text_y, "_");
+
+#ifdef RT_DX12
+			if (raytrace_enemy)
+			{
+				RT_UpdateMaterialEdges();
+				RT_UpdateMaterialIndices();
+
+				RT_EndScene();
+				RT_RasterBlitScene(&top_left_blit, &bottom_right_blit, true);
+
+				RT_EndImguiFrame();
+				RT_EndFrame();
+			}
+#endif
 			break;
 
 		case EVENT_WINDOW_CLOSE:

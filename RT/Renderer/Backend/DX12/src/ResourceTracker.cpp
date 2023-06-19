@@ -10,7 +10,7 @@ using namespace RT;
 
 namespace
 {
-	uint64_t HashResource(ID3D12Resource *resource)
+	uint64_t HashResource(ID3D12Object *resource)
 	{
 		// Bottom bits of a pointer tend to be 0 because of alignment
 		uint64_t result = (uint64_t)resource >> 4;
@@ -18,9 +18,9 @@ namespace
 	}
 }
 
-void D3D12ResourceTracker::Track(RT_RESOURCE_TRACKER_DEBUG_PARAMS ID3D12Resource *resource, D3D12_RESOURCE_STATES initial_state)
+void D3D12ResourceTracker::TrackObject(RT_RESOURCE_TRACKER_DEBUG_PARAMS ID3D12Object* object, D3D12_RESOURCE_STATES initial_state)
 {
-	if (NEVER(!resource))
+	if (NEVER(!object))
 		return;
 
 	// allocate entry
@@ -30,9 +30,9 @@ void D3D12ResourceTracker::Track(RT_RESOURCE_TRACKER_DEBUG_PARAMS ID3D12Resource
 	}
 
 	// initialize entry
-	ResourceEntry *entry = RT_SLL_POP(m_first_free_resource);
-	entry->resource = resource;
-	entry->state    = initial_state;
+	ResourceEntry* entry = RT_SLL_POP(m_first_free_resource);
+	entry->resource = object;
+	entry->state = initial_state;
 	entry->command_list = nullptr;
 
 	// debug info
@@ -40,18 +40,23 @@ void D3D12ResourceTracker::Track(RT_RESOURCE_TRACKER_DEBUG_PARAMS ID3D12Resource
 	entry->track_file = file__;
 
 	// insert entry into hashtable
-	uint64_t hash = HashResource(resource);
+	uint64_t hash = HashResource(object);
 	uint64_t slot = hash % RT_ARRAY_COUNT(m_resource_table);
 	RT_SLL_PUSH(m_resource_table[slot], entry);
 }
 
-// This will effectively turn a persistently tracked resource into a temporary resource, simply by overriding its fence value from UINT64_MAX to an actual value
-void D3D12ResourceTracker::TrackTemp(RT_RESOURCE_TRACKER_DEBUG_PARAMS ID3D12Resource* resource, CommandList* command_list)
+void D3D12ResourceTracker::TrackTempObject(RT_RESOURCE_TRACKER_DEBUG_PARAMS ID3D12Object* object, CommandList* command_list)
 {
-	if (NEVER(!resource))
+	if (NEVER(!object))
 		return;
 
-	ResourceEntry* entry = FindResourceEntry(resource);
+	ResourceEntry* entry = FindResourceEntry(object);
+	if (!entry)
+	{
+		TrackObject(RT_RESOURCE_TRACKER_FWD_ARGS object);
+		entry = FindResourceEntry(object);
+	}
+
 	entry->command_list = command_list;
 	entry->temp_track_line = line__;
 	entry->temp_track_file = file__;
@@ -92,7 +97,7 @@ D3D12_RESOURCE_STATES D3D12ResourceTracker::Transition(ID3D12GraphicsCommandList
 		// resources in the UPLOAD_HEAP. Maybe we should do this more elegantly?
 		if (dst_state != entry->state && entry->state != D3D12_RESOURCE_STATE_GENERIC_READ)
 		{
-			D3D12_RESOURCE_BARRIER barrier = GetTransitionBarrier(entry->resource, entry->state, dst_state);
+			D3D12_RESOURCE_BARRIER barrier = GetTransitionBarrier((ID3D12Resource*)entry->resource, entry->state, dst_state);
 			list->ResourceBarrier(1, &barrier);
 			entry->state = dst_state;
 		}
@@ -127,7 +132,7 @@ void D3D12ResourceTracker::Transitions(ID3D12GraphicsCommandList* list, size_t n
 			if (dst_state != entry->state)
 			{
 				// Add barrier
-				barriers[num_barriers++] = GetTransitionBarrier(entry->resource, entry->state, dst_state);
+				barriers[num_barriers++] = GetTransitionBarrier((ID3D12Resource*)entry->resource, entry->state, dst_state);
 				entry->state = dst_state;
 			}
 		}
@@ -160,7 +165,7 @@ void D3D12ResourceTracker::Transitions(ID3D12GraphicsCommandList* list, size_t n
 			if (dst_states[res_index] != entry->state)
 			{
 				// Add barrier
-				barriers[num_barriers++] = GetTransitionBarrier(entry->resource, entry->state, dst_states[res_index]);
+				barriers[num_barriers++] = GetTransitionBarrier((ID3D12Resource*)entry->resource, entry->state, dst_states[res_index]);
 				entry->state = dst_states[res_index];
 			}
 		}
@@ -169,7 +174,7 @@ void D3D12ResourceTracker::Transitions(ID3D12GraphicsCommandList* list, size_t n
 	list->ResourceBarrier(num_barriers, barriers);
 }
 
-void D3D12ResourceTracker::Release(ID3D12Resource *resource)
+void D3D12ResourceTracker::Release(ID3D12Object *resource)
 {
 	ResourceEntry **entry_slot = FindResourceEntrySlot(resource);
 
@@ -222,32 +227,31 @@ void RT::D3D12ResourceTracker::ReleaseStaleTempResources(uint64_t fence_value)
 	{
 		// Release temp resources if their fence value has been reached
 		// (operation has been executed on the GPU and the resource is no longer in-flight)
-		for (ResourceEntry** resource_at = &m_resource_table[i]; *resource_at;)
+		for (ResourceEntry** entry_at = &m_resource_table[i]; *entry_at;)
 		{
-			ResourceEntry* resource = *resource_at;
+			ResourceEntry* entry = *entry_at;
 
-			if (resource->command_list)
+			if (entry->command_list &&
+				entry->command_list->GetFenceValue() <= fence_value)
 			{
-				if (resource->command_list->GetFenceValue() <= fence_value)
-				{
-					ResourceEntry* entry = RT_SLL_POP(*resource_at);
+				entry->resource->Release();
+				entry->resource = nullptr;
 
-					entry->resource->Release();
-					entry->resource = nullptr;
+				*entry_at = entry->next;
 
-					RT_SLL_PUSH(m_first_free_resource, entry);
-					continue;
-				}
+				RT_SLL_PUSH(m_first_free_resource, entry);
 			}
-
-			resource_at = &resource->next;
+			else
+			{
+				entry_at = &entry->next;
+			}
 		}
 	}
 }
 
 //------------------------------------------------------------------------
 
-D3D12ResourceTracker::ResourceEntry **D3D12ResourceTracker::FindResourceEntrySlot(ID3D12Resource *resource)
+D3D12ResourceTracker::ResourceEntry **D3D12ResourceTracker::FindResourceEntrySlot(ID3D12Object *resource)
 {
 	ResourceEntry **result = nullptr;
 
@@ -268,7 +272,7 @@ D3D12ResourceTracker::ResourceEntry **D3D12ResourceTracker::FindResourceEntrySlo
 	return result;
 }
 
-D3D12ResourceTracker::ResourceEntry *D3D12ResourceTracker::FindResourceEntry(ID3D12Resource *resource)
+D3D12ResourceTracker::ResourceEntry *D3D12ResourceTracker::FindResourceEntry(ID3D12Object *resource)
 {
 	RT_ASSERT(resource);
 
