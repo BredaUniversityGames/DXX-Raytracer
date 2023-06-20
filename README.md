@@ -21,6 +21,7 @@ You can join the community discord to make suggestions, report bugs, or just to 
 ## Instructions
 - SHIFT + ALT + F1: Open debug menus, more on those below
 - SHIFT + ALT + F2: Toggle depth testing for debug lines
+- SHIFT + ALT + F: Toggle free camera option
 - F1: Menu with important keybindings from the game
 - ALT + F2: Save your game
 - ALT + F3: Load a save game
