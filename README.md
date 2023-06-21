@@ -6,6 +6,8 @@ DXX Raytracer is a fork of the [DXX Retro](https://github.com/CDarrow/DXX-Retro)
 This build of the game uses the shareware assets. If you have bought the original version of Descent 1995, you can replace the descent.pig and descent.hog files
 with your versions to play the whole game.
 
+[Download the latest release here.](https://github.com/BredaUniversityGames/DXX-Raytracer/releases/latest)
+
 ## Features
 - Physically-based rendering
 - Soft shadows
