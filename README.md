@@ -3,10 +3,12 @@
 # DXX Raytracer
 DXX Raytracer is a fork of the [DXX Retro](https://github.com/CDarrow/DXX-Retro) project for Windows. DXX Raytracer uses modern raytracing techniques to update the graphics of the beloved retro game known as Descent.
 
-This build of the game uses the shareware assets. If you have bought the original version of Descent 1995, you can replace the descent.pig and descent.hog files
-with your versions to play the whole game.
 
-[Download the latest release here.](https://github.com/BredaUniversityGames/DXX-Raytracer/releases/latest)
+
+## Installation
+[Download dxx_raytracer.zip here.](https://github.com/BredaUniversityGames/DXX-Raytracer/releases/latest) 
+
+Extract the zip file to a location of your choosing, and just run descent1.exe to play! This build of the game uses the shareware assets. If you have bought the original version of Descent 1995, you can replace the descent.pig and descent.hog files with your versions to play the whole game.
 
 ## Features
 - Physically-based rendering
