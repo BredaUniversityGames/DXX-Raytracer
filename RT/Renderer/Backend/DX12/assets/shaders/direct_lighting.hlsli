@@ -272,8 +272,11 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 		float3 sky_color_bot = g_global_cb.sky_color_bottom;//float3(0.15f, 0.35f, 0.65f);
 		float3 sky_color = lerp(sky_color_top, sky_color_bot, abs(IN.view_dir.y));
 
-		OUT.emissive_lighting = sky_color;
-		OUT.direct_lighting   = sky_color;
+		if (is_indirect)
+		{
+			OUT.emissive_lighting = sky_color;
+			OUT.direct_lighting   = sky_color;
+		}
 	}
 
 	OUT.albedo = IN.albedo;

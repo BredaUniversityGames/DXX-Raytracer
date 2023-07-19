@@ -264,8 +264,6 @@ namespace RT
 
 		RT_Vec2 halton_samples[HALTON_SAMPLE_COUNT];
 		float viewport_offset_y;
-		RT_Vec3 sky_color_top;
-		RT_Vec3 sky_color_bottom;
 
 		RT_RendererIO io;
 		uint64_t tweakvars_config_last_modified_time;

@@ -61,12 +61,16 @@ CockpitSettings g_rt_cockpit_settings = {
 	.back_cockpit_offset = {0.000f, -0.760f, -2.488f},
 	.back_cockpit_scale = {1.000f, 1.000f, 1.000f},
 };
+
 RT_GLTFNode* g_rt_cockpit_gltf;
 RT_FreeCamInfo g_rt_free_cam_info = { 0 };
 int light_culling_heuristic = 1;
 int max_rec_depth = 32;
 float max_distance = 600;
 float max_seg_distance = 500;
+
+static RT_DynamicLightInfo   g_rt_default_dynamic_light_info;
+static RT_WeaponLightAdjusts g_rt_default_light_adjusts[RT_LIGHT_ADJUST_ARRAY_SIZE];
 
 uint64_t g_rt_frame_index;
 
@@ -206,7 +210,7 @@ int gr_set_mode(u_int32_t mode)
 bool g3_draw_bitmap_full(vms_vector* pos, fix width, fix height, grs_bitmap* bm, float r, float g, float b)
 {
 	// NOTE(daniel): Unfortunate!
-	uint16_t material_index = ((uintptr_t)bm - (uintptr_t)GameBitmaps) / sizeof(grs_bitmap);
+	uint16_t material_index = (uint16_t)(bm - GameBitmaps);
 
 	RT_Vec2 rt_dim = { f2fl(width), f2fl(height) };
 	RT_Vec3 rt_pos = RT_Vec3Fromvms_vector(pos);
@@ -388,6 +392,51 @@ void draw_tmap_flat(grs_bitmap* bm, int nv, g3s_point** vertlist)
 	RT_LOG(RT_LOGSERVERITY_HIGH, "draw_tmap_flat: unhandled");
 }
 
+//
+// NOTE(daniel): Duplicated from Lights.c
+//
+
+typedef struct RT_SettingsNotification
+{
+	float timer;
+	ImVec4 color;
+	char *message;
+} RT_SettingsNotification;
+
+static inline void RT_SetSettingsNotification(RT_SettingsNotification *notif, char *name, ImVec4 color)
+{
+	notif->timer = 2.0f;
+	notif->color = color;
+	notif->message = name;
+}
+
+static inline void RT_ShowSettingsNotification(RT_SettingsNotification *notif)
+{
+	if (notif->timer > 0.0f)
+	{
+		ImVec4 color = notif->color;
+		color.w = notif->timer / 2.0f;
+
+		igPushStyleColor_Vec4(ImGuiCol_Text, color);
+		igText(notif->message);
+		igPopStyleColor(1);
+
+		notif->timer -= 1.0f / 60.0f; // hardcoded nonsense
+	}
+	else
+	{
+		igDummy((ImVec2){0.0f, igGetFontSize()});
+	}
+}
+
+//
+
+static RT_SettingsNotification g_dynamic_lights_notification;
+
+static void RT_LoadDynamicLightSettings(void);
+static void RT_SaveDynamicLightSettings(void);
+static void RT_ResetDynamicLightSettings(void);
+
 int gr_init(int mode)
 {
 	SDL_WM_SetCaption(DESCENT_VERSION, "Descent");
@@ -447,6 +496,13 @@ int gr_init(int mode)
 	float fov;
 	RT_ConfigReadFloat(RT_GetRendererIO()->config, RT_StringLiteral("fov"), &fov);
 	g_cam.vfov = g_free_cam.vfov = fov;
+
+	// Awkward place to do this, but I need to do it somewhere
+	memcpy(&g_rt_default_dynamic_light_info, &g_rt_dynamic_light_info, sizeof(g_rt_dynamic_light_info));
+	memcpy(g_rt_default_light_adjusts, rt_light_adjusts, sizeof(RT_WeaponLightAdjusts)*RT_LIGHT_ADJUST_ARRAY_SIZE);
+
+	RT_LoadDynamicLightSettings();
+	g_dynamic_lights_notification.timer = 0.0f;
 
 	return 0;
 }
@@ -1093,6 +1149,208 @@ void RT_ResetLightEmission()
 	RT_UpdateMaterial(lightTexture, material);
 }
 
+static void RT_DoDynamicLightEditorMenus(void)
+{
+	if (igBegin("Dynamic Light Editor", NULL, 0))
+	{
+		igPushID_Str("Dynamic Lights");
+
+		if (igButton("Load Settings", (ImVec2){0, 0}))
+		{
+			RT_LoadDynamicLightSettings();
+		}
+
+		igSameLine(0.0f, -1.0f);
+
+		if (igButton("Save Settings", (ImVec2){0, 0}))
+		{
+			RT_SaveDynamicLightSettings();
+		}
+
+		igSameLine(0.0f, -1.0f);
+
+		if (igButton("Reset Settings", (ImVec2){0, 0}))
+		{
+			RT_ResetDynamicLightSettings();
+		}
+
+		RT_ShowSettingsNotification(&g_dynamic_lights_notification);
+
+		igSeparator();
+		igText("Weapon Lights");
+		igSeparator();
+
+		igPushID_Int(2);
+		igCheckbox("Enable Weapon and flare lights", &g_rt_dynamic_light_info.weaponFlareLights);
+		igSliderFloat("Weapon Brightness modifier", &g_rt_dynamic_light_info.weaponBrightMod, 0, 1000.f, "%.3f", 0);
+		igSliderFloat("Radius  modifier", &g_rt_dynamic_light_info.weaponRadiusMod, 0, 4.f, "%.3f", 0);
+		for (size_t i = 0; i < RT_LIGHT_ADJUST_ARRAY_SIZE; i++)
+		{
+			RT_WeaponLightAdjusts* adj = &rt_light_adjusts[i];
+			if (igTreeNode_Str(adj->weapon_name))
+			{
+				igSliderFloat("Brightness", &adj->brightMul, 0, 100.f, "%.3f", 0);
+				igSliderFloat("Radius", &adj->radiusMul, 0, 10.f, "%.3f", 0);
+				igTreePop();
+			}
+		}
+		igPopID();
+
+		igDummy((ImVec2){0.0f, igGetFontSize()});
+
+		igSeparator();
+		igText("Explosion Lights");
+		igSeparator();
+
+		igPushID_Int(3);
+		igCheckbox("Enable explosion lights", &g_rt_dynamic_light_info.explosionLights);
+		igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.explosionBrightMod, 0, 1000.f, "%.3f", 0);
+		igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.explosionRadiusMod, 0, 4.f, "%.3f", 0);
+		igSliderFloat("Type bias modifier", &g_rt_dynamic_light_info.explosionTypeBias, 0.10f, 10.f, "%.3f", 0);
+		igPopID();
+
+		igDummy((ImVec2){0.0f, igGetFontSize()});
+
+		igSeparator();
+		igText("Muzzle Flare Lights");
+		igSeparator();
+
+		igPushID_Int(4);
+		igCheckbox("Enable muzzle flare lights", &g_rt_dynamic_light_info.muzzleLights);
+		igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.muzzleBrightMod, 0, 1000.f, "%.3f", 0);
+		igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.muzzleRadiusMod, 0, 4.f, "%.3f", 0);
+		igPopID();
+
+		igPopID();
+	} igEnd();
+}
+
+// Bad thing ahead:
+static RT_String RT_FormatString(RT_Arena *arena, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	const char *formatted = RT_ArenaPrintF(arena, fmt, args);
+
+	va_end(args);
+
+	RT_String result = 
+	{
+		.bytes = formatted,
+		.count = strlen(formatted), // <--- specifically, this is the bad thing.
+	};
+
+	return result;
+}
+
+void RT_LoadDynamicLightSettings(void)
+{
+	bool success = true;
+
+	RT_DynamicLightInfo *info = &g_rt_dynamic_light_info;
+
+	RT_ArenaMemoryScope(&g_thread_arena)
+	{
+		RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+		RT_InitializeConfig(cfg, &g_thread_arena);
+
+		if (RT_DeserializeConfigFromFile(cfg, "lights/dynamic_lights.vars"))
+		{
+			RT_ConfigReadInt(cfg, RT_StringLiteral("weapon_flare_lights"), &info->weaponFlareLights);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("weapon_brightness"), &info->weaponBrightMod);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("weapon_radius"), &info->weaponRadiusMod);
+
+			for (size_t i = 0; i < RT_LIGHT_ADJUST_ARRAY_SIZE; i++)
+			{
+				RT_WeaponLightAdjusts *adj = &rt_light_adjusts[i];
+
+				RT_ConfigReadFloat(cfg, RT_FormatString(&g_thread_arena, "%s_brightness", adj->weapon_name), &adj->brightMul);
+				RT_ConfigReadFloat(cfg, RT_FormatString(&g_thread_arena, "%s_radius", adj->weapon_name), &adj->radiusMul);
+			}
+
+			RT_ConfigReadInt(cfg, RT_StringLiteral("explosion_lights"), &info->explosionLights);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("explosion_brightness"), &info->explosionBrightMod);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("explosion_radius"), &info->explosionRadiusMod);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("explosion_type_bias"), &info->explosionTypeBias);
+
+			RT_ConfigReadInt(cfg, RT_StringLiteral("muzzle_lights"), &info->muzzleLights);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("muzzle_brightness"), &info->muzzleBrightMod);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("muzzle_radius"), &info->muzzleRadiusMod);
+		}
+		else
+		{
+			success = false;
+		}
+	}
+
+	if (success)
+	{
+		RT_SetSettingsNotification(&g_dynamic_lights_notification, "Successfully loaded dynamic light settings", (ImVec4){0.5f, 1.0f, 0.7f, 1.0f});
+	}
+	else 
+	{
+		RT_SetSettingsNotification(&g_dynamic_lights_notification, "Nothing to load!", (ImVec4){1.0f, 0.2f, 0.2f, 1.0f});
+	}
+}
+
+void RT_SaveDynamicLightSettings(void)
+{
+	PHYSFS_mkdir("lights");
+
+	bool success = true;
+
+	RT_DynamicLightInfo *info = &g_rt_dynamic_light_info;
+
+	RT_ArenaMemoryScope(&g_thread_arena)
+	{
+		RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+		RT_InitializeConfig(cfg, &g_thread_arena);
+
+		RT_ConfigWriteInt(cfg, RT_StringLiteral("weapon_flare_lights"), info->weaponFlareLights);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("weapon_brightness"), info->weaponBrightMod);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("weapon_radius"), info->weaponRadiusMod);
+
+		for (size_t i = 0; i < RT_LIGHT_ADJUST_ARRAY_SIZE; i++)
+		{
+			RT_WeaponLightAdjusts *adj = &rt_light_adjusts[i];
+
+			RT_ConfigWriteFloat(cfg, RT_FormatString(&g_thread_arena, "%s_brightness", adj->weapon_name), adj->brightMul);
+			RT_ConfigWriteFloat(cfg, RT_FormatString(&g_thread_arena, "%s_radius", adj->weapon_name), adj->radiusMul);
+		}
+
+		RT_ConfigWriteInt(cfg, RT_StringLiteral("explosion_lights"), info->explosionLights);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("explosion_brightness"), info->explosionBrightMod);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("explosion_radius"), info->explosionRadiusMod);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("explosion_type_bias"), info->explosionTypeBias);
+
+		RT_ConfigWriteInt(cfg, RT_StringLiteral("muzzle_lights"), info->muzzleLights);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("muzzle_brightness"), info->muzzleBrightMod);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("muzzle_radius"), info->muzzleRadiusMod);
+
+		if (!RT_SerializeConfigToFile(cfg, "lights/dynamic_lights.vars"))
+		{
+			success = false;
+		}
+	}
+
+	if (success)
+	{
+		RT_SetSettingsNotification(&g_dynamic_lights_notification, "Successfully saved dynamic light settings", (ImVec4){0.7f, 1.0f, 0.5f, 1.0f});
+	}
+	else 
+	{
+		RT_SetSettingsNotification(&g_dynamic_lights_notification, "Encountered problems saving dynamic light settings!", (ImVec4){1.0f, 0.2f, 0.2f, 1.0f});
+	}
+}
+
+void RT_ResetDynamicLightSettings(void)
+{
+	memcpy(&g_rt_dynamic_light_info, &g_rt_default_dynamic_light_info, sizeof(g_rt_dynamic_light_info));
+	memcpy(rt_light_adjusts, g_rt_default_light_adjusts, sizeof(RT_WeaponLightAdjusts)*RT_LIGHT_ADJUST_ARRAY_SIZE);
+	RT_SetSettingsNotification(&g_dynamic_lights_notification, "Reset dynamic light settings", (ImVec4){0.5f, 0.7f, 1.0f, 1.0f});
+}
+
 void RT_StartImGuiFrame(void)
 {
 	igStartFrameWin32();
@@ -1137,17 +1395,11 @@ void RT_StartImGuiFrame(void)
 			value_changed |= igDragFloat3("Rear View Offset", &g_rt_cockpit_settings.back_cockpit_offset, 0.001f, -10.0, 10.0, "%.3f", ImGuiTreeNodeFlags_None);
 			value_changed |= igDragFloat3("Rear View Scale", &g_rt_cockpit_settings.back_cockpit_scale, 0.001f, -10.0, 10.0, "%.3f", ImGuiTreeNodeFlags_None);
 
-#ifndef RT_StringLiteral
-#define RT_StringLiteral(x) (RT_String){x, sizeof(x)-1}
-#endif
 			igPopID();
 		} igEnd();
 
 		if (igBegin("Ingame Tools", NULL, 0))
 		{
-			igPushID_Str("Dynamic Lights");
-			igIndent(0);
-
 			if (igCollapsingHeader_TreeNodeFlags("Light Culling", ImGuiTreeNodeFlags_None)) {
 				igPushID_Int(1);
 				igSliderInt("Light Culling Heuristic", &light_culling_heuristic, 0, 1, "%i", 0);
@@ -1157,41 +1409,6 @@ void RT_StartImGuiFrame(void)
 				igPopID();
 			}
 
-			if (igCollapsingHeader_TreeNodeFlags("Weapon Light Settings", ImGuiTreeNodeFlags_None))
-			{
-				igPushID_Int(2);
-				igCheckbox("Enable Weapon and flare lights", &g_rt_dynamic_light_info.weaponFlareLights);
-				igSliderFloat("Weapon Brightness modifier", &g_rt_dynamic_light_info.weaponBrightMod, 0, 1000.f, "%.3f", 0);
-				igSliderFloat("Radius  modifier", &g_rt_dynamic_light_info.weaponRadiusMod, 0, 4.f, "%.3f", 0);
-				for (size_t i = 0; i < RT_LIGHT_ADJUST_ARRAY_SIZE; i++)
-				{
-					RT_WeaponLightAdjusts* adj = &rt_light_adjusts[i];
-					if (igTreeNode_Str(adj->weapon_name))
-					{
-						igSliderFloat("Brightness", &adj->brightMul, 0, 100.f, "%.3f", 0);
-						igSliderFloat("Radius", &adj->radiusMul, 0, 10.f, "%.3f", 0);
-						igTreePop();
-					}
-				}
-				igPopID();
-			}
-			if (igCollapsingHeader_TreeNodeFlags("Explosion Light Settings", ImGuiTreeNodeFlags_None))
-			{
-				igPushID_Int(3);
-				igCheckbox("Enable explosion lights", &g_rt_dynamic_light_info.explosionLights);
-				igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.explosionBrightMod, 0, 1000.f, "%.3f", 0);
-				igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.explosionRadiusMod, 0, 4.f, "%.3f", 0);
-				igSliderFloat("Type bias modifier", &g_rt_dynamic_light_info.explosionTypeBias, 0.10f, 10.f, "%.3f", 0);
-				igPopID();
-			}
-			if (igCollapsingHeader_TreeNodeFlags("Muzzle fire Light Settings", ImGuiTreeNodeFlags_None))
-			{
-				igPushID_Int(4);
-				igCheckbox("Enable muzzle flare lights", &g_rt_dynamic_light_info.muzzleLights);
-				igSliderFloat("Brightness modifier", &g_rt_dynamic_light_info.muzzleBrightMod, 0, 1000.f, "%.3f", 0);
-				igSliderFloat("Radius modifier", &g_rt_dynamic_light_info.muzzleRadiusMod, 0, 4.f, "%.3f", 0);
-				igPopID();
-			}
 			if (igCollapsingHeader_TreeNodeFlags("Miscellaneous", ImGuiTreeNodeFlags_None))
 			{
 				igPushID_Str("Miscellaneous");
@@ -1208,10 +1425,9 @@ void RT_StartImGuiFrame(void)
 				igCheckbox("Enable free cam clipping", &g_rt_free_cam_info.g_free_cam_clipping_enabled);
 			}
 
-			igPopID();
-			igUnindent(0);
 		} igEnd();
 
+		RT_DoDynamicLightEditorMenus();
 		RT_ShowLightMenu();
 
 		RT_DoPolymodelViewerMenus();

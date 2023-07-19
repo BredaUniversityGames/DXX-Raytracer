@@ -40,10 +40,12 @@ RT_API void RT_DeserializeConfigFromString(RT_Config *cfg, RT_String string);
 RT_API bool RT_ConfigReadString(RT_Config *cfg, RT_String key, RT_String *value);
 RT_API bool RT_ConfigReadFloat(RT_Config *cfg, RT_String key, float *value);
 RT_API bool RT_ConfigReadInt(RT_Config *cfg, RT_String key, int *value);
+RT_API bool RT_ConfigReadVec2(RT_Config *cfg, RT_String key, RT_Vec2 *value);
 RT_API bool RT_ConfigReadVec3(RT_Config *cfg, RT_String key, RT_Vec3 *value);
 RT_API void RT_ConfigWriteString(RT_Config *cfg, RT_String key, RT_String value);
 RT_API void RT_ConfigWriteFloat(RT_Config *cfg, RT_String key, float value);
 RT_API void RT_ConfigWriteInt(RT_Config *cfg, RT_String key, int value);
+RT_API void RT_ConfigWriteVec2(RT_Config *cfg, RT_String key, RT_Vec2 value);
 RT_API void RT_ConfigWriteVec3(RT_Config *cfg, RT_String key, RT_Vec3 value);
 RT_API bool RT_ConfigEraseKey(RT_Config *cfg, RT_String key); // Returns true if the key existed
 RT_API RT_String RT_SerializeConfigToString(RT_Arena *arena, RT_Config *cfg);

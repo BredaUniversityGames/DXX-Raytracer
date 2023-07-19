@@ -1,14 +1,55 @@
+#include "physfs.h"
+
 #include "Lights.h"
 #include "textures.h"
-#include "Core/Arena.h"
 #include "dx12.h"
 #include "gr.h"
 #include "RTgr.h"
 #include "RTmaterials.h"
 
+#include "Core/Arena.h"
+#include "Core/Config.h"
+#include "Core/String.h"
+
 float g_light_multiplier = 1.0;
 float g_light_multiplier_default = 1.0;
 const float FLT_MAX = 3.402823466e+38F;
+
+typedef struct RT_SettingsNotification
+{
+	float timer;
+	ImVec4 color;
+	char *message;
+} RT_SettingsNotification;
+
+static inline void RT_SetSettingsNotification(RT_SettingsNotification *notif, char *name, ImVec4 color)
+{
+	notif->timer = 2.0f;
+	notif->color = color;
+	notif->message = name;
+}
+
+static inline void RT_ShowSettingsNotification(RT_SettingsNotification *notif)
+{
+	if (notif->timer > 0.0f)
+	{
+		ImVec4 color = notif->color;
+		color.w = notif->timer / 2.0f;
+
+		igPushStyleColor_Vec4(ImGuiCol_Text, color);
+		igText(notif->message);
+		igPopStyleColor(1);
+
+		notif->timer -= 1.0f / 60.0f; // hardcoded nonsense
+	}
+	else
+	{
+		igDummy((ImVec2){0.0f, igGetFontSize()});
+	}
+}
+
+static RT_SettingsNotification g_lights_notification;
+static RT_SettingsNotification g_headlights_notification;
 
 RT_LightDefinition g_light_definitions[] =
 {
@@ -152,6 +193,41 @@ RT_LightDefinition g_light_definitions[] =
 	},
 };
 
+static RT_LightDefinition g_default_light_definitions[RT_ARRAY_COUNT(g_light_definitions)];
+
+static RT_HeadlightSettings g_default_headlights = {
+	.pos_offset_horz = 3.0f,
+	.pos_offset_vert = -2.0f,
+	.skew_horz       = 0.1f,
+	.skew_vert       = 0.06f,
+	.radius          = 0.05f,
+	.brightness      = 1.5f,
+	.spot_angle      = 0.05f,
+	.spot_softness   = 0.05f,
+};
+
+void RT_InitLightStuff()
+{
+	memcpy(&g_headlights, &g_default_headlights, sizeof(g_headlights));
+	memcpy(g_default_light_definitions, g_light_definitions, sizeof(g_default_light_definitions));
+
+	RT_LoadLightSettings();
+	g_lights_notification.timer = 0.0f;
+
+	RT_LoadHeadLightSettings();
+	g_headlights_notification.timer = 0.0f;
+}
+
+void RT_ResetLightSettings()
+{
+	g_light_multiplier_default = g_light_multiplier = 1.0f;
+
+	memcpy(g_light_definitions, g_default_light_definitions, sizeof(g_default_light_definitions));
+	g_pending_light_update = true;
+
+	RT_SetSettingsNotification(&g_lights_notification, "Reset Light Settings", (ImVec4){0.5f, 0.7f, 1.0f, 1.0f});
+}
+
 int RT_IsLight(int tmap) 
 {
 	//TODO: If this starts to become a performance bottleneck, add a hashmap so the lookups can be done in O(1)
@@ -228,8 +304,69 @@ RT_Light RT_InitLight(RT_LightDefinition definition, RT_Vertex* vertices, RT_Vec
 
 void RT_ShowLightMenu()
 {
-	igBegin("Light Explorer", false, ImGuiWindowFlags_AlwaysAutoResize);
-	if(igSliderFloat("Global brightness: ", &g_light_multiplier_default, 0.000001f, 15.0f, "%f", ImGuiSliderFlags_Logarithmic)){
+	igBegin("Light Explorer", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+
+	igText("Headlights");
+	igPushID_Str("Headlights");
+	{
+		if (igButton("Load Settings", (ImVec2){0, 0}))
+		{
+			RT_LoadHeadLightSettings();
+		}
+
+		igSameLine(0.0f, -1.0f);
+
+		if (igButton("Save Settings", (ImVec2){0, 0}))
+		{
+			RT_SaveHeadLightSettings();
+		}
+
+		igSameLine(0.0f, -1.0f);
+
+		if (igButton("Reset Settings", (ImVec2){0, 0}))
+		{
+			RT_ResetHeadLightSettings();
+		}
+
+		RT_ShowSettingsNotification(&g_headlights_notification);
+
+		RT_HeadlightSettings *h = &g_headlights;
+		igSliderFloat("Horizontal Position Offset", &h->pos_offset_horz, 0.0f, 15.0f, "%.02f", 0);
+		igSliderFloat("Vertical Position Offset", &h->pos_offset_vert, -5.0f, 5.0f, "%.02f", 0);
+		igSliderFloat("Horizontal Skew", &h->skew_horz, 0.0f, 0.4f, "%.02f", 0);
+		igSliderFloat("Vertical Skew", &h->skew_vert, -0.2f, 0.2f, "%.02f", 0);
+		igSliderFloat("Light Radius", &h->radius, 0.01f, 0.4f, "%.02f", 0);
+		igSliderFloat("Brightness", &h->brightness, 0.0f, 5.0f, "%.02f", 0);
+		igSliderFloat("Spot Angle", &h->spot_angle, 0.01f, 0.12f, "%.02f", 0);
+		igSliderFloat("Spot Softness", &h->spot_softness, 0.01f, 0.12f, "%.02f", 0);
+		igDummy((ImVec2){0.0f, igGetFontSize()});
+	}
+	igPopID(1);
+
+	igText("Level Lights");
+
+	if (igButton("Load Settings", (ImVec2){0, 0}))
+	{
+		RT_LoadLightSettings();
+	}
+
+	igSameLine(0.0f, -1.0f);
+
+	if (igButton("Save Settings", (ImVec2){0, 0}))
+	{
+		RT_SaveLightSettings();
+	}
+
+	igSameLine(0.0f, -1.0f);
+
+	if (igButton("Reset Settings", (ImVec2){0, 0}))
+	{
+		RT_ResetLightSettings();
+	}
+
+	RT_ShowSettingsNotification(&g_lights_notification);
+
+	if (igSliderFloat("Global brightness", &g_light_multiplier_default, 0.000001f, 15.0f, "%f", ImGuiSliderFlags_Logarithmic)) {
 		g_light_multiplier = g_light_multiplier_default;
 		g_pending_light_update = true;
 	}
@@ -320,5 +457,226 @@ void RT_VisualizeLight(RT_Light* light)
 			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,0.0,scale.z)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
 			RT_RasterLineWorld(pos, RT_Vec3Add(pos, RT_Vec3Make(0.0,0.0,-scale.z)), RT_Vec4Make(1.0, 0.0, 0.0, 1.0));
 		break;
+	}
+}
+
+void RT_LoadLightSettings()
+{
+	PHYSFS_mkdir("lights");
+
+	bool success = true;
+
+	// ------------------------------------------------------------------
+	// Read global light settings
+
+	RT_ArenaMemoryScope(&g_thread_arena)
+	{
+		RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+		RT_InitializeConfig(cfg, &g_thread_arena);
+
+		if (RT_DeserializeConfigFromFile(cfg, "lights/global_lights.vars"))
+		{
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("global_light_multiplier"), &g_light_multiplier_default);
+			g_light_multiplier = g_light_multiplier_default;
+		}
+		else
+		{
+			success = false;
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Read all da rest
+
+	for (size_t light_index = 0; light_index < RT_ARRAY_COUNT(g_light_definitions); light_index++)
+	{
+		RT_ArenaMemoryScope(&g_thread_arena)
+		{
+			RT_LightDefinition *def = &g_light_definitions[light_index];
+
+			RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+			RT_InitializeConfig(cfg, &g_thread_arena);
+
+			char *file_name = RT_ArenaPrintF(&g_thread_arena, "lights/%s.vars", def->name);
+			if (RT_DeserializeConfigFromFile(cfg, file_name))
+			{
+				RT_ConfigReadInt(cfg, RT_StringLiteral("kind"), &def->kind);
+				RT_ConfigReadVec3(cfg, RT_StringLiteral("emission"), &def->emission);
+				RT_ConfigReadFloat(cfg, RT_StringLiteral("radius"), &def->radius);
+				RT_ConfigReadVec2(cfg, RT_StringLiteral("size"), &def->size);
+				RT_ConfigReadFloat(cfg, RT_StringLiteral("spot_angle"), &def->spot_angle);
+				RT_ConfigReadFloat(cfg, RT_StringLiteral("spot_softness"), &def->spot_softness);
+			}
+			else
+			{
+				success = false;
+			}
+		}
+	}
+
+	if (success)
+	{
+		RT_SetSettingsNotification(&g_lights_notification, "Successfully Loaded Light Settings", (ImVec4){0.5f, 1.0f, 0.7f, 1.0f});
+	}
+	else 
+	{
+		RT_SetSettingsNotification(&g_lights_notification, "Encountered Problems Loading Light Settings!", (ImVec4){1.0f, 0.2f, 0.2f, 1.0f});
+	}
+
+	g_pending_light_update = true;
+}
+
+void RT_SaveLightSettings()
+{
+	PHYSFS_mkdir("lights");
+
+	bool success = true;
+
+	// ------------------------------------------------------------------
+	// Write global light settings
+
+	RT_ArenaMemoryScope(&g_thread_arena)
+	{
+		RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+		RT_InitializeConfig(cfg, &g_thread_arena);
+
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("global_light_multiplier"), g_light_multiplier_default);
+
+		if (!RT_SerializeConfigToFile(cfg, "lights/global_lights.vars"))
+		{
+			success = false;
+
+			RT_LOG(RT_LOGSERVERITY_HIGH, "Failed to serialize global_lights.vars:\n");
+			for (RT_StringNode *error = cfg->first_error; error; error = error->next)
+			{
+				RT_LOGF(RT_LOGSERVERITY_HIGH, "    > %.*s\n", RT_ExpandString(error->string));
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------
+	// Write all da rest
+
+	for (size_t light_index = 0; light_index < RT_ARRAY_COUNT(g_light_definitions); light_index++)
+	{
+		RT_ArenaMemoryScope(&g_thread_arena)
+		{
+			RT_LightDefinition *def = &g_light_definitions[light_index];
+
+			RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+			RT_InitializeConfig(cfg, &g_thread_arena);
+
+			RT_ConfigWriteInt(cfg, RT_StringLiteral("kind"), def->kind);
+			RT_ConfigWriteVec3(cfg, RT_StringLiteral("emission"), def->emission);
+			RT_ConfigWriteFloat(cfg, RT_StringLiteral("radius"), def->radius);
+			RT_ConfigWriteVec2(cfg, RT_StringLiteral("size"), def->size);
+			RT_ConfigWriteFloat(cfg, RT_StringLiteral("spot_angle"), def->spot_angle);
+			RT_ConfigWriteFloat(cfg, RT_StringLiteral("spot_softness"), def->spot_softness);
+
+			char *file_name = RT_ArenaPrintF(&g_thread_arena, "lights/%s.vars", def->name);
+			if (!RT_SerializeConfigToFile(cfg, file_name))
+			{
+				success = false;
+
+				RT_LOG(RT_LOGSERVERITY_HIGH, "Failed to serialize %s:\n", file_name);
+				for (RT_StringNode *error = cfg->first_error; error; error = error->next)
+				{
+					RT_LOGF(RT_LOGSERVERITY_HIGH, "    > %.*s\n", RT_ExpandString(error->string));
+				}
+			}
+		}
+	}
+
+	if (success)
+	{
+		RT_SetSettingsNotification(&g_lights_notification, "Successfully Saved Light Settings", (ImVec4){0.7f, 1.0f, 0.5f, 1.0f});
+	}
+	else 
+	{
+		RT_SetSettingsNotification(&g_lights_notification, "Encountered Problems Saving Light Settings!", (ImVec4){1.0f, 0.2f, 0.2f, 1.0f});
+	}
+}
+
+void RT_ResetHeadLightSettings()
+{
+	memcpy(&g_headlights, &g_default_headlights, sizeof(g_headlights));
+	RT_SetSettingsNotification(&g_headlights_notification, "Reset Headlight Settings", (ImVec4){0.5f, 0.7f, 1.0f, 1.0f});
+}
+
+void RT_LoadHeadLightSettings(void)
+{
+	bool success = true;
+
+	RT_ArenaMemoryScope(&g_thread_arena)
+	{
+		RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+		RT_InitializeConfig(cfg, &g_thread_arena);
+
+		if (RT_DeserializeConfigFromFile(cfg, "lights/headlights.vars"))
+		{
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("pos_offset_horz"), &g_headlights.pos_offset_horz);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("pos_offset_vert"), &g_headlights.pos_offset_vert);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("skew_horz"), &g_headlights.skew_horz);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("skew_vert"), &g_headlights.skew_vert);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("radius"), &g_headlights.radius);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("brightness"), &g_headlights.brightness);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("spot_angle"), &g_headlights.spot_angle);
+			RT_ConfigReadFloat(cfg, RT_StringLiteral("spot_softness"), &g_headlights.spot_softness);
+		}
+		else
+		{
+			success = false;
+		}
+	}
+
+	if (success)
+	{
+		RT_SetSettingsNotification(&g_headlights_notification, "Successfully Loaded Headlight Settings", (ImVec4){0.5f, 1.0f, 0.7f, 1.0f});
+	}
+	else 
+	{
+		RT_SetSettingsNotification(&g_headlights_notification, "Encountered Problems Loading Headlight Settings!", (ImVec4){1.0f, 0.2f, 0.2f, 1.0f});
+	}
+}
+
+void RT_SaveHeadLightSettings(void)
+{
+	PHYSFS_mkdir("lights");
+
+	bool success = true;
+
+	RT_ArenaMemoryScope(&g_thread_arena)
+	{
+		RT_Config *cfg = RT_ArenaAllocStruct(&g_thread_arena, RT_Config);
+		RT_InitializeConfig(cfg, &g_thread_arena);
+
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("pos_offset_horz"), g_headlights.pos_offset_horz);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("pos_offset_vert"), g_headlights.pos_offset_vert);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("skew_horz"), g_headlights.skew_horz);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("skew_vert"), g_headlights.skew_vert);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("radius"), g_headlights.radius);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("brightness"), g_headlights.brightness);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("spot_angle"), g_headlights.spot_angle);
+		RT_ConfigWriteFloat(cfg, RT_StringLiteral("spot_softness"), g_headlights.spot_softness);
+
+		if (!RT_SerializeConfigToFile(cfg, "lights/headlights.vars"))
+		{
+			success = false;
+
+			RT_LOG(RT_LOGSERVERITY_HIGH, "Failed to serialize global_lights.vars:\n");
+			for (RT_StringNode *error = cfg->first_error; error; error = error->next)
+			{
+				RT_LOGF(RT_LOGSERVERITY_HIGH, "    > %.*s\n", RT_ExpandString(error->string));
+			}
+		}
+	}
+
+	if (success)
+	{
+		RT_SetSettingsNotification(&g_headlights_notification, "Successfully Saved Headlight Settings", (ImVec4){0.7f, 1.0f, 0.5f, 1.0f});
+	}
+	else 
+	{
+		RT_SetSettingsNotification(&g_headlights_notification, "Encountered Problems Saving Headlight Settings!", (ImVec4){1.0f, 0.2f, 0.2f, 1.0f});
 	}
 }

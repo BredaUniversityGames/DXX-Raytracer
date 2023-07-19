@@ -2814,6 +2814,9 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 	if (!g_d3d.scene.freezeframe)
 	{
 		g_d3d.scene.camera = *scene_settings->camera;
+		g_d3d.scene.camera.forward = RT_Vec3Normalize(g_d3d.scene.camera.forward);
+		g_d3d.scene.camera.right = RT_Vec3Normalize(g_d3d.scene.camera.right);
+		g_d3d.scene.camera.up = RT_Vec3Normalize(g_d3d.scene.camera.up);
 		g_d3d.scene.hitgroups_table_at = 0;
 		g_d3d.tlas_instance_count = 0;
 		g_d3d.lights_count = 0;
@@ -3179,7 +3182,8 @@ RT_ResourceHandle RenderBackend::UploadMesh(const RT_UploadMeshParams& mesh_para
 void RenderBackend::ReleaseTexture(const RT_ResourceHandle texture_handle)
 {
 	TextureResource* texture_resource = g_texture_slotmap.Find(texture_handle);
-	RT_RELEASE_RESOURCE(texture_resource->texture);
+	// Note (Justin): This is a dirty little hack to have the resources released after the current frame finished rendering
+	RT_TRACK_TEMP_OBJECT(texture_resource->texture, &g_d3d.command_queue_direct->GetCommandList());
 	g_d3d.cbv_srv_uav.Free(texture_resource->descriptors);
 	g_texture_slotmap.Remove(texture_handle);
 }
@@ -3187,8 +3191,10 @@ void RenderBackend::ReleaseTexture(const RT_ResourceHandle texture_handle)
 void RenderBackend::ReleaseMesh(const RT_ResourceHandle mesh_handle)
 {
 	MeshResource* mesh_resource = g_mesh_slotmap.Find(mesh_handle);
-	RT_RELEASE_RESOURCE(mesh_resource->triangle_buffer);
-	RT_RELEASE_RESOURCE(mesh_resource->blas);
+	CommandList* cmd_list = &g_d3d.command_queue_direct->GetCommandList();
+	// Note (Justin): This is a dirty little hack to have the resources released after the current frame finished rendering
+	RT_TRACK_TEMP_OBJECT(mesh_resource->triangle_buffer, cmd_list);
+	RT_TRACK_TEMP_OBJECT(mesh_resource->blas, cmd_list);
 	g_d3d.cbv_srv_uav.Free(mesh_resource->triangle_buffer_descriptor);
 	g_mesh_slotmap.Remove(mesh_handle);
 }
@@ -4155,9 +4161,10 @@ void RenderBackend::RaytraceRender()
 	g_d3d.command_queue_direct->ExecuteCommandList(command_list);
 }
 
-void RenderBackend::RaytraceSetSkyColors(const RT_Vec3 top, const RT_Vec3 bottom) {
-    g_d3d.sky_color_top = top;
-    g_d3d.sky_color_bottom = bottom;
+void RenderBackend::RaytraceSetSkyColors(const RT_Vec3 top, const RT_Vec3 bottom)
+{
+	CurrentFrameData()->scene_cb.As<GlobalConstantBuffer>()->sky_color_top = top;
+	CurrentFrameData()->scene_cb.As<GlobalConstantBuffer>()->sky_color_bottom = bottom;
 }
 
 void RenderBackend::RasterSetViewport(float x, float y, float width, float height)

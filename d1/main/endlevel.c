@@ -67,6 +67,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "RTutil.h"
 #include "Core/Arena.h"
 #include "Game/lights.h"
+#include "globvars.h"
 #endif
 
 #ifdef EDITOR
@@ -410,6 +411,10 @@ void stop_endlevel_sequence()
 
 	Endlevel_sequence = EL_OFF;
 
+#ifdef RT_DX12
+	RT_RaytraceSetSkyColors(RT_Vec3Make(0.0, 0.0, 0.0), RT_Vec3Make(0.0, 0.0, 0.0));
+#endif
+
 	PlayerFinishedLevel(0);
 }
 
@@ -572,7 +577,6 @@ void do_endlevel_frame()
 
 			if (ConsoleObject->segnum == transition_segnum) {
 					int objnum;
-
 					Endlevel_sequence = EL_LOOKBACK;
 
 					objnum = obj_create(OBJ_CAMERA, 0,
@@ -908,9 +912,9 @@ void render_external_scene(fix eye_offset)
 		}
 	}
 
-	#ifdef STATION_ENABLED
+#ifdef STATION_ENABLED
 	draw_polygon_model(&station_pos,&vmd_identity_matrix,NULL,station_modelnum,0,lrgb,NULL,NULL, OBJ_NONE);
-	#endif
+#endif
 
 #ifdef OGL
 	ogl_toggle_depth_test(0);
@@ -1045,7 +1049,7 @@ void endlevel_render_mine(fix eye_offset)
 	else
 		g3_set_view_matrix(&Viewer_eye,&Viewer->orient,Render_zoom);
 
-	render_mine(start_seg_num,eye_offset);
+	render_mine(start_seg_num, eye_offset);
 #ifdef RT_DX12
     RT_Vec3 player_pos = RT_Vec3Fromvms_vector(&Viewer->pos);
     RT_RenderLevel(player_pos);
@@ -1056,28 +1060,26 @@ void render_endlevel_frame(fix eye_offset)
 {
 
 	g3_start_frame();
+
 #ifdef RT_DX12
 	RT_Camera camera =
 	{
 		.position = RT_Vec3Fromvms_vector(&Viewer->pos),
-		.forward = RT_Vec3Fromvms_vector(&Viewer->orient.fvec),
-		.right = RT_Vec3Fromvms_vector(&Viewer->orient.rvec),
-		.up = RT_Vec3Fromvms_vector(&Viewer->orient.uvec),
+		.up = RT_Vec3Fromvms_vector(&View_matrix.uvec),
+		.forward = RT_Vec3Fromvms_vector(&View_matrix.fvec),
+		.right = RT_Vec3Fromvms_vector(&View_matrix.rvec),
 		.vfov = 60.0f,
 		.near_plane = 0.1f,
 		.far_plane = 10000.0f
-    };
-    RT_SceneSettings frame_settings = 
+	};
+	RT_SceneSettings frame_settings =
 	{
-        .camera = &camera,
-        .render_height_override = 0,
-        .render_width_override = 0,
-    };
-    RT_BeginScene(&frame_settings);
-	RT_Light light = RT_MakeSphericalLight(
-		(RT_Vec3){ 10, 10, 10 },
-		(RT_Vec3){ f2fl(mine_ground_exit_point.x), f2fl(mine_ground_exit_point.y) + 100.f, f2fl(mine_ground_exit_point.z) }, 10.f);
-	RT_RaytraceSubmitLight(light);
+		.camera = &camera,
+		.render_height_override = 0,
+		.render_width_override = 0,
+	};
+	RT_BeginScene(&frame_settings);
+	RT_RaytraceSetSkyColors(RT_Vec3Make(0.5, 0.5, 0.5), RT_Vec3Make(0.5, 0.5, 0.5));
 #endif
 
 	if (Endlevel_sequence < EL_OUTSIDE)
@@ -1086,7 +1088,7 @@ void render_endlevel_frame(fix eye_offset)
 		render_external_scene(eye_offset);
 
 #ifdef RT_DX12
-    RT_EndScene();
+	RT_EndScene();
 #endif
 	g3_end_frame();
 

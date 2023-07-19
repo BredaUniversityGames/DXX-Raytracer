@@ -140,6 +140,7 @@ int gamedata_init()
 #ifdef RT_DX12
 	RT_InitAllPolyModels();
     RT_InitAllBitmaps();
+	RT_InitLightStuff();
     RT_InitglTFModels();
     RT_RaytraceSetSkyColors((RT_Vec3){ 0.0f,0.0f,0.000f }, (RT_Vec3){ 0.0f,0.0f,0.000f });
 #endif

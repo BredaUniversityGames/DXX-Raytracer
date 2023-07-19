@@ -230,7 +230,7 @@ void RT::D3D12ResourceTracker::ReleaseStaleTempResources(uint64_t fence_value)
 		for (ResourceEntry** entry_at = &m_resource_table[i]; *entry_at;)
 		{
 			ResourceEntry* entry = *entry_at;
-
+			
 			if (entry->command_list &&
 				entry->command_list->GetFenceValue() <= fence_value)
 			{

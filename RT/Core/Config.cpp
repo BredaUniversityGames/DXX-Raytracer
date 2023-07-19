@@ -202,6 +202,32 @@ bool RT_ConfigReadInt(RT_Config *cfg, RT_String key, int *value)
 	return result;
 }
 
+bool RT_ConfigReadVec2(RT_Config *cfg, RT_String key, RT_Vec2 *value)
+{
+	bool result = false;
+
+	RT_String string;
+	if (RT_ConfigReadString(cfg, key, &string))
+	{
+		RT_ParseFloatResult parse_x = RT_ParseFloat(string);
+		string = RT_StringAdvance(string, parse_x.advance);
+		string = RT_StringAdvance(string, RT_StringFindChar(string, ',') + 1);
+		string = RT_StringAdvance(string, RT_StringFindFirstNonWhitespace(string));
+		RT_ParseFloatResult parse_y = RT_ParseFloat(string);
+
+		result = (parse_x.success &&
+				  parse_y.success);
+
+		if (result)
+		{
+			value->x = parse_x.value;
+			value->y = parse_y.value;
+		}
+	}
+
+	return result;
+}
+
 bool RT_ConfigReadVec3(RT_Config *cfg, RT_String key, RT_Vec3 *value)
 {
 	bool result = false;
@@ -261,6 +287,13 @@ void RT_ConfigWriteInt(RT_Config *cfg, RT_String key, int value)
 {
 	RT_ConfigKeyValue *kv = RT_ConfigFindOrCreateKeyValue(cfg, key);
 	kv->value_count = snprintf(kv->value, sizeof(kv->value), "%d", value);
+	cfg->last_modified_time = RT_GetHighResTime().value;
+}
+
+void RT_ConfigWriteVec2(RT_Config *cfg, RT_String key, RT_Vec2 value)
+{
+	RT_ConfigKeyValue *kv = RT_ConfigFindOrCreateKeyValue(cfg, key);
+	kv->value_count = snprintf(kv->value, sizeof(kv->value), "%f, %f", value.x, value.y);
 	cfg->last_modified_time = RT_GetHighResTime().value;
 }
 

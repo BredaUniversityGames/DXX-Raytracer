@@ -185,8 +185,8 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
                     normal = -normal;
                 }
             }
-
-            OUT.normal = EncodeNormalOctahedron(normal);
+            
+            OUT.normal = clamp(EncodeNormalOctahedron(normal), 0.0, 1.0);
 
             // -------------------------------------------------------------------------------------
             // Determine gbuffer depth value

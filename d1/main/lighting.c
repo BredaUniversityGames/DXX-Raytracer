@@ -48,6 +48,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifdef RT_DX12
 #include "RTgr.h"
 #include "Game/Lights.h"
+
 RT_DynamicLightInfo g_rt_dynamic_light_info =
 {
 	.explosionLights = true,

@@ -3057,6 +3057,11 @@ void render_gauges()
 		draw_player_ship(cloak, SB_SHIP_GAUGE_X, SB_SHIP_GAUGE_Y);
 		draw_weapon_boxes();
 	}
+
+#ifdef RT_DX12
+	dx12_end_frame();
+	dx12_start_frame();
+#endif
 }
 
 //	---------------------------------------------------------------------------------------------------------

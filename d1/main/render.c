@@ -1627,19 +1627,20 @@ void render_frame(fix eye_offset)
 
 	// Player light
 	{
-		// NOTE(daniel): These would be great tweakables for an ImGui menu.
-		float pos_offset_horz = 3.0f;
-		float pos_offset_vert = -2.0f;
-		float skew_horz = 0.12f;
-		float skew_vert = 0.06f;
+		RT_HeadlightSettings *h = &g_headlights;
+
+		float pos_offset_horz = h->pos_offset_horz;
+		float pos_offset_vert = h->pos_offset_vert;
+		float skew_horz = h->skew_horz;
+		float skew_vert = h->skew_vert;
 		RT_Vec3  light_pos_left = RT_Vec3Add3(object_pos, RT_Vec3Muls(g_cam.right, -pos_offset_horz), RT_Vec3Muls(g_cam.up, pos_offset_vert));
 		RT_Vec3  light_pos_right = RT_Vec3Add3(object_pos, RT_Vec3Muls(g_cam.right, +pos_offset_horz), RT_Vec3Muls(g_cam.up, pos_offset_vert));
-		RT_Vec3  light_dir_left = RT_Vec3Normalize(RT_Vec3Add3(g_cam.forward, RT_Vec3Muls(g_cam.right, +0.1f), RT_Vec3Muls(g_cam.up, skew_vert)));
-		RT_Vec3  light_dir_right = RT_Vec3Normalize(RT_Vec3Add3(g_cam.forward, RT_Vec3Muls(g_cam.right, -0.1f), RT_Vec3Muls(g_cam.up, skew_vert)));
-		RT_Vec3  light_emission = RT_Vec3FromScalar(1.5f);
-		float    light_radius = 0.05f;
-		float    light_spot_angle = 0.05f;
-		float    light_spot_softness = 0.05f;
+		RT_Vec3  light_dir_left = RT_Vec3Normalize(RT_Vec3Add3(g_cam.forward, RT_Vec3Muls(g_cam.right, skew_horz), RT_Vec3Muls(g_cam.up, skew_vert)));
+		RT_Vec3  light_dir_right = RT_Vec3Normalize(RT_Vec3Add3(g_cam.forward, RT_Vec3Muls(g_cam.right, -skew_horz), RT_Vec3Muls(g_cam.up, skew_vert)));
+		RT_Vec3  light_emission = RT_Vec3FromScalar(h->brightness);
+		float    light_radius = h->radius;
+		float    light_spot_angle = h->spot_angle;
+		float    light_spot_softness = h->spot_softness;
 		RT_RaytraceSubmitLight(RT_MakeSphericalSpotlight(light_emission, light_pos_left, light_dir_left, light_radius,
 			light_spot_angle, light_spot_softness, 0.6f));
 		RT_RaytraceSubmitLight(RT_MakeSphericalSpotlight(light_emission, light_pos_right, light_dir_right, light_radius,

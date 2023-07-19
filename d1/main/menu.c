@@ -80,6 +80,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define RT_RENDER_SETTINGS_CONFIG_FILE "render_settings.vars"
 #include "Core/String.h"
 #include "Core/Config.h"
+#include "Game/Lights.h"
 #endif
 
 
@@ -1329,11 +1330,11 @@ int raytrace_config_menuset(newmenu *menu, d_event *event, void *userdata)
 
 void raytrace_config()
 {
-	newmenu_item m[28];
+	newmenu_item m[30];
 	int nitems = 0;
 
 	// Pathtracing ops
-	int opt_gr_enable_pathtracing = 0, opt_gr_enable_pbr, opt_gr_important_sample_brdf, opt_gr_use_oren_nayar_brdf, opt_gr_lighting_quality;
+	int opt_gr_enable_pathtracing = 0, opt_gr_enable_pbr, opt_gr_important_sample_brdf, opt_gr_lighting_quality;
 
 	// Motion Blur ops
 	int opt_gr_motion_blur_quality = 0, opt_gr_motion_blur_strength;
@@ -1366,9 +1367,6 @@ void raytrace_config()
 	opt_gr_enable_pbr = nitems;
 	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable PBR"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pbr")); nitems++;
 
-	opt_gr_use_oren_nayar_brdf = nitems;
-	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Use Oren-Nayar BRD"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("use_oren_nayar_brdf")); nitems++;
-
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Lighting Quality:"; nitems++;
 	opt_gr_lighting_quality = nitems;
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Low"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
@@ -1376,6 +1374,9 @@ void raytrace_config()
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " High"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
 	int lighting_mode = RT_GetIntFromConfig(config, RT_StringLiteral("ris"));
 	m[opt_gr_lighting_quality+lighting_mode].value=1;
+
+	int opt_gr_bilinear = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Smooth Textures"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("smooth_textures")); nitems++;
 
 	// --- MOTION BLUR ---
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
@@ -1417,12 +1418,24 @@ void raytrace_config()
 	opt_gr_vignette_strength = nitems;
 	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Vignette Strength:"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("vignette_strength")) * 10.f); m[nitems].min_value = 0; m[nitems].max_value = 10; nitems++;
 
+	// --- OTHER ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Other:"; nitems++;
+
+	int headlight_brightness = (int)roundf(g_headlights.brightness * 5.0f);
+	int opt_gr_headlight_brightness = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Headlight Brightness:"; m[nitems].value = headlight_brightness; m[nitems].min_value = 0; m[nitems].max_value = 15; nitems++;
+
+	RT_ASSERT(nitems <= RT_ARRAY_COUNT(m));
+
 	newmenu_do1( NULL, "Raytracing Options", nitems, m, raytrace_config_menuset, NULL, 1 );
+
+	g_headlights.brightness = (float)m[opt_gr_headlight_brightness].value / 5.0f;
+	RT_SaveHeadLightSettings();
 
 	if (!preset_changed){
 		RT_ConfigWriteInt(config, RT_StringLiteral("enable_pathtracing"), m[opt_gr_enable_pathtracing].value);
 		RT_ConfigWriteInt(config, RT_StringLiteral("enable_pbr"), m[opt_gr_enable_pbr].value);
-		RT_ConfigWriteInt(config, RT_StringLiteral("use_oren_nayar_brdf"), m[opt_gr_use_oren_nayar_brdf].value);
 		for(int i = 0; i < 3; i++){
 			if(m[opt_gr_lighting_quality+i].value == 1){
 				lighting_mode = i;
@@ -1454,6 +1467,21 @@ void raytrace_config()
 		}
 
 		RT_ConfigWriteInt(config, RT_StringLiteral("ris"), lighting_mode);
+
+		if (m[opt_gr_bilinear].value)
+		{
+			RT_ConfigWriteInt(config, RT_StringLiteral("smooth_textures"), true);
+			RT_ConfigWriteInt(config, RT_StringLiteral("albedo_sample_linear"), 1);
+			RT_ConfigWriteInt(config, RT_StringLiteral("normal_sample_linear"), 1);
+			RT_ConfigWriteInt(config, RT_StringLiteral("metallic_roughness_sample_linear"), 1);
+		}
+		else
+		{
+			RT_ConfigWriteInt(config, RT_StringLiteral("smooth_textures"), false);
+			RT_ConfigWriteInt(config, RT_StringLiteral("albedo_sample_linear"), 0);
+			RT_ConfigWriteInt(config, RT_StringLiteral("normal_sample_linear"), 0);
+			RT_ConfigWriteInt(config, RT_StringLiteral("metallic_roughness_sample_linear"), 0);
+		}
 
 		RT_ConfigWriteInt(config, RT_StringLiteral("motion_blur_quality"), m[opt_gr_motion_blur_quality].value);
 		RT_ConfigWriteFloat(config, RT_StringLiteral("motion_blur_curve"), m[opt_gr_motion_blur_strength].value/10.0f);
