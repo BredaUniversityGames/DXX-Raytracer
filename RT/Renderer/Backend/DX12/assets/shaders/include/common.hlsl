@@ -615,6 +615,53 @@ void GetMaterialIndicesAndOrient(uint material_edge_index, out uint material_ind
 	}
 }
 
+// Rotation with angle (in radians) and axis (https://gist.github.com/keijiro/ee439d5e7388f3aafc5296005c8c3f33)
+float3x3 AngleAxis3x3(float angle, float3 axis)
+{
+    float c, s;
+    sincos(angle, s, c);
+
+    float t = 1 - c;
+    float x = axis.x;
+    float y = axis.y;
+    float z = axis.z;
+
+    return float3x3(
+        t * x * x + c,      t * x * y - s * z,  t * x * z + s * y,
+        t * x * y + s * z,  t * y * y + c,      t * y * z - s * x,
+        t * x * z - s * y,  t * y * z + s * x,  t * z * z + c
+    );
+}
+
+float3 GetRotatedTangent(uint orient, float3 axis, float3 tangent)
+{
+	switch (orient)
+	{
+	case 1:
+	{
+		float3x3 rotator = AngleAxis3x3(1.570796 * 3.0,axis);
+		return mul(rotator, tangent);
+	} break;
+
+	case 2:
+	{
+		float3x3 rotator = AngleAxis3x3(1.570796 * 2.0,axis);
+		return mul(rotator, tangent);
+	} break;
+
+	case 3:
+	{
+		float3x3 rotator = AngleAxis3x3(1.570796,axis);
+		return mul(rotator, tangent);
+	} break;
+
+	default:
+	{
+		return tangent;
+	} break;
+	}
+}
+
 float2 GetRotatedUVs(uint orient, float2 uv)
 {
 	switch (orient)
@@ -641,7 +688,7 @@ float2 GetRotatedUVs(uint orient, float2 uv)
 	}
 }
 
-void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, float2 barycentrics, inout uint material_index, inout float2 uv)
+void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, float2 barycentrics, inout uint material_index, inout float2 uv, inout float3 normal, inout float3 tangent)
 {
 	// Figure out the materials and apply potential debug material override
 	uint material_edge_index = hit_triangle.material_edge_index;
@@ -661,7 +708,30 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 
 	uv = GetHitAttribute(uvs, barycentrics);
 	float2 uv_rotated = GetRotatedUVs(orient, uv);
+	
+	// -------------------------------------------------------------------------------------
+	// Calculate Normal
+	
+	float3 normals[] =
+	{
+		hit_triangle.normal0,
+		hit_triangle.normal1,
+		hit_triangle.normal2,
+	};
+	normal = GetHitAttribute(normals, barycentrics);
+	
+	// -------------------------------------------------------------------------------------
+	// Calculate Tangent
 
+	float3 tangents[] = {
+		hit_triangle.tangent0.xyz,
+		hit_triangle.tangent1.xyz,
+		hit_triangle.tangent2.xyz,
+	};
+
+	tangent = GetHitAttribute(tangents, barycentrics);
+	float3 tangent_rotated = GetRotatedTangent(orient, normal, tangent);
+	
 	// TODO(daniel): Clean this messy silly code up!
 	if (material_index2 != 0xFFFFFFFF)
 	{
@@ -673,6 +743,7 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 		{
 			material_index = material_index2;
 			uv = uv_rotated;
+			tangent = tangent_rotated;
 		}
 	}
 }
