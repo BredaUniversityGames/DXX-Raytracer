@@ -635,31 +635,9 @@ float3x3 AngleAxis3x3(float angle, float3 axis)
 
 float3 GetRotatedTangent(uint orient, float3 axis, float3 tangent)
 {
-	switch (orient)
-	{
-	case 1:
-	{
-		float3x3 rotator = AngleAxis3x3(1.570796 * 3.0,axis);
-		return mul(rotator, tangent);
-	} break;
-
-	case 2:
-	{
-		float3x3 rotator = AngleAxis3x3(1.570796 * 2.0,axis);
-		return mul(rotator, tangent);
-	} break;
-
-	case 3:
-	{
-		float3x3 rotator = AngleAxis3x3(1.570796,axis);
-		return mul(rotator, tangent);
-	} break;
-
-	default:
-	{
-		return tangent;
-	} break;
-	}
+	float3x3 rotator = AngleAxis3x3(orient * -1.570796,axis);
+	return mul(rotator, tangent);
+	
 }
 
 float2 GetRotatedUVs(uint orient, float2 uv)
@@ -730,7 +708,6 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 	};
 
 	tangent = GetHitAttribute(tangents, barycentrics);
-	float3 tangent_rotated = GetRotatedTangent(orient, normal, tangent);
 	
 	// TODO(daniel): Clean this messy silly code up!
 	if (material_index2 != 0xFFFFFFFF)
@@ -742,8 +719,11 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 		if (albedo2.a > 0.0)
 		{
 			material_index = material_index2;
-			uv = uv_rotated;
-			tangent = tangent_rotated;
+			if(orient != 0)
+			{
+				uv = uv_rotated;
+				tangent = GetRotatedTangent(orient, normal, tangent);
+			}
 		}
 	}
 }
