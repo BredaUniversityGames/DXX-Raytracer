@@ -57,7 +57,9 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
         // Set up hit material
 
         float2 uv = (float2)0;
-        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, ray_payload.barycentrics, OUT.material_index, uv);
+		float3 interpolated_normal = (float3)0;
+		float3 tangent = (float3)0;
+        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, ray_payload.barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
         Material hit_material = g_materials[OUT.material_index];
 
         float3 emissive_factor = UnpackRGBE(hit_material.emissive_factor);
@@ -98,13 +100,6 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
             // -------------------------------------------------------------------------------------
             // Determine gbuffer normal value
 
-            float3 normals[] =
-            {
-                OUT.hit_triangle.normal0,
-                OUT.hit_triangle.normal1,
-                OUT.hit_triangle.normal2,
-            };
-            float3 interpolated_normal = GetHitAttribute(normals, ray_payload.barycentrics);
             float3 normal = interpolated_normal;
 
             // -------------------------------------------------------------------------------------
@@ -140,12 +135,7 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
             // Calculate normal from normal map
             if (tweak.enable_normal_maps)
             {
-                float3 tangents[] = {
-                    OUT.hit_triangle.tangent0.xyz,
-                    OUT.hit_triangle.tangent1.xyz,
-                    OUT.hit_triangle.tangent2.xyz,
-                };
-                float3 tangent = GetHitAttribute(tangents, ray_payload.barycentrics);
+                
                 float3 bitangent = cross(interpolated_normal, tangent) * OUT.hit_triangle.tangent0.w;
 
                 // Bring the normal map sample from tangent space to world space
