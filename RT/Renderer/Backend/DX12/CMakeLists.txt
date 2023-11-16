@@ -37,7 +37,9 @@ set (Renderer_HEADER
 "D3DX/d3dx12.h"
 "CGLTF/cgltf.h"
 "src/DescriptorArena.hpp"
-"src/mikktspace.h")
+"src/mikktspace.h"
+"DirectXTK12/src/DDSc.h"
+)
 
 #I hate cmake for not allowing me to link interface libs. Ah well, now we do this indirection!
 set (Renderer_PUBLIC_HEADER
@@ -102,10 +104,12 @@ target_include_directories(Renderer PUBLIC
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cimgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/DirectXTK12/src
 )
 target_include_directories(
     Renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/cimgui/imgui
     Renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/implot
+    Renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/DirectXTK12/src
 )
 
 target_link_libraries(Renderer  

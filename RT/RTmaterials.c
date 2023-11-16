@@ -154,43 +154,82 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 	{
 		if (load_mask & RT_BITN(i))
 		{
+			
+			// first try loading the compressed dds version of the file if it exists
+			bool ddsLoaded = false;
 			RT_ArenaMemoryScope(&g_thread_arena)
 			{
-				char *file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s", paths->textures[i]);
+				char* ddsFile = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
+				
+				uint8_t* ddsData = NULL;  // this is pointer to whole file including header
+				const struct DDS_HEADER* header = NULL;	// pointer to the header (in same buffer as ddsData)
+				const uint8_t* bitData = NULL;		// pointer to the compressed pixel data (in same buffer as ddsData)
+				size_t bitSize = 0;					// size of the compressed pixel data
+				
+				bool fileLoaded = RT_LoadDDSImageFromDisk(&g_thread_arena, ddsFile, &ddsData, &header, &bitData, &bitSize);
 
-				RT_TextureFormat format = g_rt_material_texture_slot_formats[i];
-
-				int bpp = g_rt_texture_format_bpp[format];
-
-				int w = 0, h = 0, c = 0;
-				unsigned char *pixels = RT_LoadImageFromDisk(&g_thread_arena, file, &w, &h, &c, bpp);
-
-				if (i == RT_MaterialTextureSlot_Emissive)
+				if (fileLoaded && ddsData)
 				{
-					// Premultiply emissive by alpha to avoid white transparent backgrounds from showing...
+					ddsLoaded = true;
 
-					uint32_t *at = (uint32_t *)pixels;
-					for (int i = 0; i < w*h; i++)
-					{
-						RT_Vec4 color = RT_UnpackRGBA(*at);
-						color.xyz = RT_Vec3Muls(color.xyz, color.w);
-						*at++ = RT_PackRGBA(color);
-					}
-				}
-
-				if (pixels)
-				{
-					material->textures[i] = RT_UploadTexture(&(RT_UploadTextureParams){
-						.format = format,
-						.width  = w,
-						.height = h,
-						.pixels = pixels,
-						.pitch  = bpp*w,
-						.name   = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)", 
-												 bm_index, g_rt_texture_slot_names[i], file),
+					material->textures[i] = RT_UploadTextureDDS(&(RT_UploadTextureParamsDDS) {
+						.header = header,
+						.ddsData = ddsData,
+						.bitData = bitData,
+						.bitSize = bitSize,
+						.sRGB = i == 0 || i == 4,	// set sRGB to true if basecolor or emissive
+						.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)",
+								bm_index, g_rt_texture_slot_names[i], ddsFile)
 					});
 
 					textures_reloaded += 1;
+
+					free (ddsData);		// free buffer holding dds data.  Don't need to free the other pointers as they simply point to other adddresses in this memory block.
+
+				}
+
+			}
+
+			if (!ddsLoaded)	// dds file not loaded try png
+			{
+				RT_ArenaMemoryScope(&g_thread_arena)
+				{
+					char* file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.png", paths->textures[i]);
+
+					RT_TextureFormat format = g_rt_material_texture_slot_formats[i];
+
+					int bpp = g_rt_texture_format_bpp[format];
+
+					int w = 0, h = 0, c = 0;
+					unsigned char* pixels = RT_LoadImageFromDisk(&g_thread_arena, file, &w, &h, &c, bpp);
+
+					if (i == RT_MaterialTextureSlot_Emissive)
+					{
+						// Premultiply emissive by alpha to avoid white transparent backgrounds from showing...
+
+						uint32_t* at = (uint32_t*)pixels;
+						for (size_t i = 0; i < w * h; i++)
+						{
+							RT_Vec4 color = RT_UnpackRGBA(*at);
+							color.xyz = RT_Vec3Muls(color.xyz, color.w);
+							*at++ = RT_PackRGBA(color);
+						}
+					}
+
+					if (pixels)
+					{
+						material->textures[i] = RT_UploadTexture(&(RT_UploadTextureParams) {
+							.format = format,
+								.width = w,
+								.height = h,
+								.pixels = pixels,
+								.pitch = bpp * w,
+								.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)",
+									bm_index, g_rt_texture_slot_names[i], file),
+						});
+
+						textures_reloaded += 1;
+					}
 				}
 			}
 		}
@@ -255,11 +294,11 @@ void RT_InitAllBitmaps(void)
 				material->roughness = 0.5f;
 			}
 
-			snprintf(paths->albedo_texture, sizeof(paths->albedo_texture), "%s_basecolor.png", bitmap_name);
-			snprintf(paths->normal_texture, sizeof(paths->normal_texture), "%s_normal.png", bitmap_name);
-			snprintf(paths->metalness_texture, sizeof(paths->metalness_texture), "%s_metallic.png", bitmap_name);
-			snprintf(paths->roughness_texture, sizeof(paths->roughness_texture), "%s_roughness.png", bitmap_name);
-			snprintf(paths->emissive_texture, sizeof(paths->emissive_texture), "%s_emissive.png", bitmap_name);
+			snprintf(paths->albedo_texture, sizeof(paths->albedo_texture), "%s_basecolor", bitmap_name);
+			snprintf(paths->normal_texture, sizeof(paths->normal_texture), "%s_normal", bitmap_name);
+			snprintf(paths->metalness_texture, sizeof(paths->metalness_texture), "%s_metallic", bitmap_name);
+			snprintf(paths->roughness_texture, sizeof(paths->roughness_texture), "%s_roughness", bitmap_name);
+			snprintf(paths->emissive_texture, sizeof(paths->emissive_texture), "%s_emissive", bitmap_name);
 
 			// ------------------------------------------------------------------
 
@@ -268,6 +307,7 @@ void RT_InitAllBitmaps(void)
 
 			bool default_metalness, default_roughness;
             RT_ParseMaterialDefinitionFile(bm_index, material, paths, &default_metalness, &default_roughness);
+
 			RT_LoadMaterialTexturesFromPaths(bm_index, material, paths, ~0u);
 
 			if (default_metalness && RT_RESOURCE_HANDLE_VALID(material->metalness_texture))

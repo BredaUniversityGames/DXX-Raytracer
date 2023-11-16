@@ -265,6 +265,68 @@ namespace RT
 		CopyTextureRegion(command_list, dst, 0, 0, 0, &src_loc, nullptr);
 	}
 
+	void UploadTextureDataDDS(ID3D12Resource* dst, size_t width, size_t height, size_t bpp, size_t mipCount, const void* data_ptr)
+	{
+		uint8_t* src_ptr = (uint8_t*)data_ptr;  // keep track of where we are in the texture data between mipmaps
+
+		for (size_t mipIndex = 0; mipIndex < mipCount ; ++mipIndex)
+		{
+
+			size_t divider = (size_t)round(pow(2, (double) mipIndex));
+
+			D3D12_PLACED_SUBRESOURCE_FOOTPRINT pitch_footprint;
+			D3D12_RESOURCE_DESC dst_desc = dst->GetDesc();
+			size_t dst_byte_size;		// total size of destination memory
+			size_t dst_row_byte_size;	// row size of destination memory
+			UINT dst_row_num;			// how many rows of data are there.  this is different than height as dds is in 4x4 blocks of data
+			g_d3d.device->GetCopyableFootprints(&dst_desc,(UINT) mipIndex, 1, 0, &pitch_footprint, &dst_row_num, &dst_row_byte_size, &dst_byte_size);
+
+			size_t src_byte_size = ((width / divider) * (height / divider)) / (bpp / 8);	// total size of source memory
+			size_t src_row_byte_size = src_byte_size / dst_row_num;							// row size of source memory
+
+			RingBufferAllocation ring_buf_alloc = AllocateFromRingBuffer(&g_d3d.resource_upload_ring_buffer, dst_byte_size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+			D3D12_PLACED_SUBRESOURCE_FOOTPRINT placed_footprint = {};
+			placed_footprint.Offset = ring_buf_alloc.byte_offset;
+			placed_footprint.Footprint = pitch_footprint.Footprint;
+
+			uint8_t* dst_ptr = ring_buf_alloc.ptr;
+
+			size_t dst_pitch = pitch_footprint.Footprint.RowPitch;
+
+			// copy the texture data into the ring buffer
+			for (size_t y = 0; y < dst_row_num; ++y)
+			{
+				memcpy(dst_ptr, src_ptr, src_row_byte_size);
+			
+				// Increment the src and dst pointers.  
+				// They are incremented by different amounts because the destination memory each row must be a multiple of 256bytes so padding is added to every row that is below this multiple.
+				// The dds file does not have this requirement and is more tightly packed.
+				src_ptr += src_row_byte_size;
+				dst_ptr += dst_pitch;
+			}
+			
+
+			D3D12_TEXTURE_COPY_LOCATION src_loc = {};
+			src_loc.pResource = ring_buf_alloc.resource;
+			src_loc.PlacedFootprint = placed_footprint;
+			src_loc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+			D3D12_TEXTURE_COPY_LOCATION dest_loc = {};
+			dest_loc.pResource = dst;
+			dest_loc.SubresourceIndex = (UINT)mipIndex;
+			dest_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+			D3D12_RESOURCE_STATES dst_state = g_d3d.resource_tracker.GetResourceState(dst);
+
+			CommandList& command_list = *ring_buf_alloc.command_list;
+			ResourceTransition(command_list, dst, D3D12_RESOURCE_STATE_COPY_DEST);
+			command_list->CopyTextureRegion(&dest_loc, 0, 0, 0, &src_loc, nullptr);
+			ResourceTransition(command_list, dst, dst_state);
+
+		}
+
+	}
+
 	void CreateTextureSRV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, uint32_t mips)
 	{
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
