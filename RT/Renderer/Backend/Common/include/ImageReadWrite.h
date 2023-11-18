@@ -1,6 +1,3 @@
-#ifndef __IMAGEREADWRITE_H__
-#define __IMAGEREADWRITE_H__
-
 #pragma once
 
 #include "ApiTypes.h"
@@ -16,5 +13,3 @@ RT_API void RT_WritePNGToDisk(const char *path, int w, int h, int channel_count,
 RT_API bool RT_LoadDDSImageFromDisk(RT_Arena* arena, const char* path, const uint8_t** ddsData, const struct DDS_HEADER** header,const uint8_t** bitData, size_t* bitSize);
 
 #pragma pack(pop)
-
-#endif // __IMAGEREADWRITE_H__
