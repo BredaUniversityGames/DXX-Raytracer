@@ -449,8 +449,8 @@ namespace
             dxgiAdapter1->GetDesc1(&dxgiAdapterDesc1);
 
             if ((dxgiAdapterDesc1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0 &&
-                SUCCEEDED(D3D12CreateDevice(dxgiAdapter1, D3D_FEATURE_LEVEL_11_0,
-                    __uuidof(ID3D12Device), nullptr)) && dxgiAdapterDesc1.DedicatedVideoMemory > maxDedicatedVideoMemory)
+                SUCCEEDED(D3D12CreateDevice(dxgiAdapter1, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), nullptr)) &&
+				dxgiAdapterDesc1.DedicatedVideoMemory > maxDedicatedVideoMemory)
             {
                 maxDedicatedVideoMemory = dxgiAdapterDesc1.DedicatedVideoMemory;
                 DX_CALL(dxgiAdapter1->QueryInterface(&g_d3d.dxgi_adapter4));
@@ -856,7 +856,7 @@ namespace
 		}
 
 		// ok this is dumb but whateeeeeeeeeeeeeeever
-
+		
 		UINT export_count = 0;
 		LPCWSTR *exports = RT_ArenaAllocArray(temp, params.shader_count, LPCWSTR);
 
@@ -916,7 +916,7 @@ namespace
 		pso_desc.pSubobjects   = subobjects.subobjects;
 
 		ID3D12StateObject *pso = nullptr;
-		g_d3d.device->CreateStateObject(&pso_desc, IID_PPV_ARGS(&pso));
+		DX_CALL(g_d3d.device->CreateStateObject(&pso_desc, IID_PPV_ARGS(&pso)));
 
 		if (ALWAYS(pso))
 		{
@@ -926,7 +926,7 @@ namespace
 				pipeline->pso_properties->Release();
 			}
 			pipeline->pso = pso;
-			pipeline->pso->QueryInterface(IID_PPV_ARGS(&pipeline->pso_properties));
+			DX_CALL(pipeline->pso->QueryInterface(IID_PPV_ARGS(&pipeline->pso_properties)));
 		}
 	}
 
@@ -940,9 +940,11 @@ namespace
 		// Create upload shader tables for raygen and miss shader records
 
 		uint32_t num_raygen_records = 3;
-		uint32_t num_miss_records = 2;
+		uint32_t num_miss_records = 4;
+		uint32_t num_hitgroup_records = 4;
 		ShaderTable raygen_shader_table_upload = CreateShaderTable(L"Raygen shader table upload", num_raygen_records, D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT);
 		ShaderTable miss_shader_table_upload = CreateShaderTable(L"Miss shader table upload", num_miss_records);
+		ShaderTable hitgroups_shader_table_upload = CreateShaderTable(L"Hitgroups shader table upload", num_hitgroup_records);
 
 		// ------------------------------------------------------------------
 		// Fill out shader table
@@ -977,40 +979,68 @@ namespace
 			memcpy(miss_records[0].identifier, primary_miss_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
 
 			// Occlusion miss record
-			ShaderRecord occlusion_miss_record = {};
 			void* occlusion_miss_identifier = g_d3d.rt_pipelines.direct.pso_properties->GetShaderIdentifier(occlusion_miss_export_name);
 			memcpy(miss_records[1].identifier, occlusion_miss_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
 
 			AddEntryToShaderTable(&miss_shader_table_upload, 2, miss_records);
+
+			ShaderRecord test_records[2] = {};
+			void* primary_miss_identifier_indirect = g_d3d.rt_pipelines.indirect.pso_properties->GetShaderIdentifier(primary_miss_export_name);
+			memcpy(test_records[0].identifier, primary_miss_identifier_indirect, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+			
+			void* occlusion_miss_identifier_indirect = g_d3d.rt_pipelines.indirect.pso_properties->GetShaderIdentifier(primary_miss_export_name);
+			memcpy(test_records[1].identifier, occlusion_miss_identifier_indirect, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+			AddEntryToShaderTable(&miss_shader_table_upload, 2, test_records);
 		}
 		
 		// ------------------------------------------------------------------
 		// Hit group (Occlusion and Primary)
 		{
-			for (size_t i = 0; i < BACK_BUFFER_COUNT; ++i)
-			{
-				uint32_t num_hitgroup_record_types = 2;
-				g_d3d.frame_data[i].hitgroups_shader_table_upload = CreateShaderTable(L"Hitgroups shader table upload", num_hitgroup_record_types * MAX_INSTANCES);
-			}
+			// Primary ray hitgroup
+			ShaderRecord hitgroup_records[2] = {};
+			void* primary_hitgroup_identifier_primary = g_d3d.rt_pipelines.primary.pso_properties->GetShaderIdentifier(primary_hitgroup_export_name);
+			memcpy(hitgroup_records[0].identifier, primary_hitgroup_identifier_primary, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+			void* occlusion_hitgroup_identifier_direct = g_d3d.rt_pipelines.direct.pso_properties->GetShaderIdentifier(occlusion_hitgroup_export_name);
+			memcpy(hitgroup_records[1].identifier, occlusion_hitgroup_identifier_direct, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+			AddEntryToShaderTable(&hitgroups_shader_table_upload, 2, hitgroup_records);
+
+			// Why are the indirect pso identifiers different than the ones in the primary and direct psos?
+			ShaderRecord test_records[2] = {};
+			void* primary_hitgroup_identifier_indirect = g_d3d.rt_pipelines.indirect.pso_properties->GetShaderIdentifier(primary_hitgroup_export_name);
+			memcpy(test_records[0].identifier, primary_hitgroup_identifier_indirect, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+			void* occlusion_hitgroup_identifier_indirect = g_d3d.rt_pipelines.indirect.pso_properties->GetShaderIdentifier(occlusion_hitgroup_export_name);
+			memcpy(test_records[1].identifier, occlusion_hitgroup_identifier_indirect, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+
+			AddEntryToShaderTable(&hitgroups_shader_table_upload, 2, test_records);
 		}
+
+		// ------------------------------------------------------------------
+		// Create shader tables, if they do not exist yet
+
+		if (!g_d3d.raygen_shader_table)
+			g_d3d.raygen_shader_table = RT_CreateReadOnlyBuffer(L"Raygen shader table", raygen_shader_table_upload.byte_size);
+		if (!g_d3d.miss_shader_table)
+			g_d3d.miss_shader_table = RT_CreateReadOnlyBuffer(L"Miss shader table", miss_shader_table_upload.byte_size);
+		if (!g_d3d.hitgroups_shader_table)
+			g_d3d.hitgroups_shader_table = RT_CreateReadOnlyBuffer(L"Hitgroups shader table", hitgroups_shader_table_upload.byte_size);
 
 		// ------------------------------------------------------------------
 		// Copy to GPU-side shader table
 
-		if (!g_d3d.raygen_shader_table)
-		{
-			g_d3d.raygen_shader_table = RT_CreateReadOnlyBuffer(L"Raygen shader table", raygen_shader_table_upload.byte_size);
-			g_d3d.miss_shader_table = RT_CreateReadOnlyBuffer(L"Miss shader table", miss_shader_table_upload.byte_size);
-			g_d3d.hitgroups_shader_table = RT_CreateReadOnlyBuffer(L"Hitgroups shader table", g_d3d.frame_data[0].hitgroups_shader_table_upload.byte_size);
-		}
-
 		CommandList &command_list = g_d3d.command_queue_direct->GetCommandList();
 		CopyBufferRegion(command_list, g_d3d.raygen_shader_table, 0, raygen_shader_table_upload.resource, 0, raygen_shader_table_upload.byte_size);
 		CopyBufferRegion(command_list, g_d3d.miss_shader_table, 0, miss_shader_table_upload.resource, 0, miss_shader_table_upload.byte_size);
-		g_d3d.command_queue_direct->ExecuteCommandList(command_list);
+		CopyBufferRegion(command_list, g_d3d.hitgroups_shader_table, 0, hitgroups_shader_table_upload.resource, 0, hitgroups_shader_table_upload.byte_size);
 
 		RT_TRACK_TEMP_RESOURCE(raygen_shader_table_upload.resource, &command_list);
 		RT_TRACK_TEMP_RESOURCE(miss_shader_table_upload.resource, &command_list);
+		RT_TRACK_TEMP_RESOURCE(hitgroups_shader_table_upload.resource, &command_list);
+
+		g_d3d.command_queue_direct->ExecuteCommandList(command_list);
     }
 
 	void AddShader(RaytracingPipelineParams *params, RaytracingShader *shader)
@@ -2817,7 +2847,6 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 		g_d3d.scene.camera.forward = RT_Vec3Normalize(g_d3d.scene.camera.forward);
 		g_d3d.scene.camera.right = RT_Vec3Normalize(g_d3d.scene.camera.right);
 		g_d3d.scene.camera.up = RT_Vec3Normalize(g_d3d.scene.camera.up);
-		g_d3d.scene.hitgroups_table_at = 0;
 		g_d3d.tlas_instance_count = 0;
 		g_d3d.lights_count = 0;
 	}
@@ -3047,7 +3076,6 @@ void RenderBackend::SwapBuffers()
 	g_d3d.command_queue_direct->WaitForFenceValue(frame->fence_value);
 	// Release all stale temporary resources that have been tracked and reset the frame arena marker
 	g_d3d.resource_tracker.ReleaseStaleTempResources(frame->fence_value);
-	ResetShaderTable(&frame->hitgroups_shader_table_upload);
 	RT_ArenaResetToMarker(&frame->upload_buffer_arena, frame->upload_buffer_arena_reset);
 
 	g_d3d.frame_index++;
@@ -3317,31 +3345,15 @@ void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& params)
 		}
 
 		// ------------------------------------------------------------------
-		// Add mesh to hitgroup shader table
-
-		RT_ASSERT(g_d3d.scene.hitgroups_table_at < MAX_INSTANCES);
-
-		// Get hitgroup record pointers
-		ShaderRecord hitgroup_records[2] = {};
-		void* primary_hitgroup_identifier = g_d3d.rt_pipelines.primary.pso_properties->GetShaderIdentifier(primary_hitgroup_export_name);
-		memcpy(hitgroup_records[0].identifier, primary_hitgroup_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-
-		void* occlusion_hitgroup_identifier = g_d3d.rt_pipelines.direct.pso_properties->GetShaderIdentifier(occlusion_hitgroup_export_name);
-		memcpy(hitgroup_records[1].identifier, occlusion_hitgroup_identifier, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-
-		AddEntryToShaderTable(&frame->hitgroups_shader_table_upload, 2, hitgroup_records);
-
-		// ------------------------------------------------------------------
 		// Add instance description and data
 
 		uint32_t instance_index = g_d3d.tlas_instance_count++;
-		uint32_t base_hitgroup_index = (uint32_t)g_d3d.scene.hitgroups_table_at++;
 
 		D3D12_RAYTRACING_INSTANCE_DESC *instance_desc = frame->instance_descs.As<D3D12_RAYTRACING_INSTANCE_DESC>() + instance_index;
 		instance_desc->InstanceMask = 1;
 		memcpy(instance_desc->Transform, params.transform, sizeof(float)*12);
 		instance_desc->AccelerationStructure = mesh_resource->blas->GetGPUVirtualAddress();
-		instance_desc->InstanceContributionToHitGroupIndex = base_hitgroup_index * 2;
+		instance_desc->InstanceContributionToHitGroupIndex = 0;
 		instance_desc->Flags = 0;
 
 		if (params.flags & RT_RenderMeshFlags_ReverseCulling)
@@ -3699,11 +3711,6 @@ void RenderBackend::RaytraceRender()
 	}
 
 	// ------------------------------------------------------------------
-
-	ID3D12DescriptorHeap* heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
-	command_list->SetDescriptorHeaps(1, heaps);
-
-	// ------------------------------------------------------------------
 	// Clear render targets on first frame to avoid weird uninitialized
 	// render targets, and also when moving the camera in reference mode
 
@@ -3734,6 +3741,12 @@ void RenderBackend::RaytraceRender()
 	g_d3d.io.scene_transition = false;
 
 	// ------------------------------------------------------------------
+	// Set descriptor heap
+
+	ID3D12DescriptorHeap* heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
+	command_list->SetDescriptorHeaps(1, heaps);
+
+	// ------------------------------------------------------------------
 	// Dispatch Rays
 
 	/*
@@ -3753,15 +3766,13 @@ void RenderBackend::RaytraceRender()
 		- Occlusion hitgroup 1
 		- ...
 		- ...
-		- Primary hitgroup MAX_INSTANCES - 1
-		- Occlusion hitgroup MAX_INSTANCES - 1
+		- Primary hitgroup instance count - 1
+		- Occlusion hitgroup instance count - 1
 
 	*/
 
 	size_t num_hitgroup_record_types = 2;
 	size_t hitgroup_record_stride = RT_ALIGN_POW2(sizeof(ShaderRecord), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
-	size_t hitgroup_table_byte_size = num_hitgroup_record_types * hitgroup_record_stride * MAX_INSTANCES;
-	CopyBufferRegion(command_list, g_d3d.hitgroups_shader_table, 0, frame->hitgroups_shader_table_upload.resource, 0, hitgroup_table_byte_size);
 
 	{
 		// ------------------------------------------------------------------
@@ -3779,7 +3790,7 @@ void RenderBackend::RaytraceRender()
 
 		desc.HitGroupTable.StartAddress = GetShaderTableGPUPtr(g_d3d.hitgroups_shader_table, 0);
 		desc.HitGroupTable.StrideInBytes = hitgroup_record_stride;
-		desc.HitGroupTable.SizeInBytes = hitgroup_table_byte_size;
+		desc.HitGroupTable.SizeInBytes = 2 * hitgroup_record_stride;
 
 		desc.Width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
 		desc.Height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
@@ -3824,7 +3835,7 @@ void RenderBackend::RaytraceRender()
 
 		desc.HitGroupTable.StartAddress = GetShaderTableGPUPtr(g_d3d.hitgroups_shader_table, 0);
 		desc.HitGroupTable.StrideInBytes = hitgroup_record_stride;
-		desc.HitGroupTable.SizeInBytes = hitgroup_table_byte_size;
+		desc.HitGroupTable.SizeInBytes = 2 * hitgroup_record_stride;
 
 		desc.Width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
 		desc.Height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
@@ -3879,13 +3890,13 @@ void RenderBackend::RaytraceRender()
 			desc.RayGenerationShaderRecord.StartAddress = GetShaderTableGPUPtr(g_d3d.raygen_shader_table, 2);
 			desc.RayGenerationShaderRecord.SizeInBytes = sizeof(ShaderRecord);
 
-			desc.MissShaderTable.StartAddress = GetShaderTableGPUPtr(g_d3d.miss_shader_table, 0);
+			desc.MissShaderTable.StartAddress = GetShaderTableGPUPtr(g_d3d.miss_shader_table, 1);
 			desc.MissShaderTable.StrideInBytes = sizeof(ShaderRecord);
 			desc.MissShaderTable.SizeInBytes = 2 * desc.MissShaderTable.StrideInBytes;
 
-			desc.HitGroupTable.StartAddress = GetShaderTableGPUPtr(g_d3d.hitgroups_shader_table, 0);
+			desc.HitGroupTable.StartAddress = GetShaderTableGPUPtr(g_d3d.hitgroups_shader_table, 1);
 			desc.HitGroupTable.StrideInBytes = hitgroup_record_stride;
-			desc.HitGroupTable.SizeInBytes = hitgroup_table_byte_size;
+			desc.HitGroupTable.SizeInBytes = 2 * hitgroup_record_stride;
 
 			desc.Width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
 			desc.Height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
@@ -3898,7 +3909,7 @@ void RenderBackend::RaytraceRender()
 			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
 			command_list->DispatchRays(&desc);
 
-			// UAV barriers for all render targets of the direct lighting dispatch
+			// UAV barriers for all render targets of the indirect lighting dispatch
 			ID3D12Resource* uav_render_targets[] =
 			{
 				g_d3d.rt.diff, g_d3d.rt.spec

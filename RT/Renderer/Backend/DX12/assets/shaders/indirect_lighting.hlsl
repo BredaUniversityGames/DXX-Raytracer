@@ -1,7 +1,8 @@
 #ifndef INDIRECT_LIGHTING_HLSL
 #define INDIRECT_LIGHTING_HLSL
 
-#include "direct_lighting.hlsl"
+#include "primary_ray.hlsli"
+#include "direct_lighting.hlsli"
 
 [shader("raygeneration")]
 void IndirectLightingRaygen()

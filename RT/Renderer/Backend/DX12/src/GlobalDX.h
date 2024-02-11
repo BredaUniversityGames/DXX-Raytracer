@@ -162,7 +162,6 @@ namespace RT
 		BufferAllocation material_edges;
 		BufferAllocation material_indices;
 
-		ShaderTable hitgroups_shader_table_upload;
 		ID3D12Resource *pixel_debug_readback;
 
 		UINT64 tlas_size, tlas_scratch_size; 
@@ -429,8 +428,7 @@ namespace RT
 
 			uint64_t last_camera_update_frame;
 			int freezeframe;
-
-			size_t hitgroups_table_at;
+			
 			bool render_blit;
 		} scene;
 
