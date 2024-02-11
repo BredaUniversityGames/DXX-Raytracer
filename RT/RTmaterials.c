@@ -183,9 +183,6 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 					});
 
 					textures_reloaded += 1;
-
-					free (ddsData);		// free buffer holding dds data.  Don't need to free the other pointers as they simply point to other adddresses in this memory block.
-
 				}
 
 			}

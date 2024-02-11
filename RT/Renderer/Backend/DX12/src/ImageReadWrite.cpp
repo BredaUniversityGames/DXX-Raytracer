@@ -102,7 +102,7 @@ bool RT_LoadDDSImageFromDisk(RT_Arena* arena, const char* path, const uint8_t** 
 		}
 
 		// read the contents of the file
-		*ddsData = (uint8_t*) malloc(fileSize);  // allocate the memory to read the file
+		*ddsData = (uint8_t*) RT_ArenaAlloc(arena, fileSize, 16);  // allocate the memory to read the file
 		fread((void*)*ddsData, fileSize, 1, f);	// read the file
 
 		// close the file
