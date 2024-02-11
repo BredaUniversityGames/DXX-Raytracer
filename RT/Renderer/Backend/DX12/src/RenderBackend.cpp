@@ -3771,7 +3771,6 @@ void RenderBackend::RaytraceRender()
 
 	*/
 
-	size_t num_hitgroup_record_types = 2;
 	size_t hitgroup_record_stride = RT_ALIGN_POW2(sizeof(ShaderRecord), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
 
 	{
