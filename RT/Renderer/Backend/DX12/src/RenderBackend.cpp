@@ -3762,8 +3762,10 @@ void RenderBackend::RaytraceRender()
 	uint32_t rt_render_width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
 	uint32_t rt_render_height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
 
+#if RT_INLINE_RAYTRACING
 	uint32_t rt_dispatch_w = RT_MAX((rt_render_width + GROUP_X - 1) / GROUP_X, 1);
 	uint32_t rt_dispatch_h = RT_MAX((rt_render_height + GROUP_Y - 1) / GROUP_Y, 1);
+#endif
 
 	uint32_t dispatch_w = RT_MAX((g_d3d.render_width + GROUP_X - 1) / GROUP_X, 1);
 	uint32_t dispatch_h = RT_MAX((g_d3d.render_height + GROUP_Y - 1) / GROUP_Y, 1);
@@ -3816,8 +3818,8 @@ void RenderBackend::RaytraceRender()
 		desc.HitGroupTable.StrideInBytes = hitgroup_record_stride;
 		desc.HitGroupTable.SizeInBytes = 2 * hitgroup_record_stride;
 
-		desc.Width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
-		desc.Height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
+		desc.Width = rt_render_width;
+		desc.Height = rt_render_height;
 		desc.Depth = 1;
 
 		command_list->SetPipelineState1(g_d3d.rt_pipelines.primary.pso);
@@ -3870,8 +3872,8 @@ void RenderBackend::RaytraceRender()
 		desc.HitGroupTable.StrideInBytes = hitgroup_record_stride;
 		desc.HitGroupTable.SizeInBytes = 2 * hitgroup_record_stride;
 
-		desc.Width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
-		desc.Height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
+		desc.Width = rt_render_width;
+		desc.Height = rt_render_height;
 		desc.Depth = 1;
 
 		command_list->SetPipelineState1(g_d3d.rt_pipelines.direct.pso);
@@ -3940,8 +3942,8 @@ void RenderBackend::RaytraceRender()
 			desc.HitGroupTable.StrideInBytes = hitgroup_record_stride;
 			desc.HitGroupTable.SizeInBytes = 2 * hitgroup_record_stride;
 
-			desc.Width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
-			desc.Height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
+			desc.Width = rt_render_width;
+			desc.Height = rt_render_height;
 			desc.Depth = 1;
 
 			command_list->SetPipelineState1(g_d3d.rt_pipelines.indirect.pso);
