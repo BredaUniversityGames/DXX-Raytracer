@@ -46,10 +46,6 @@ uint16_t        g_rt_material_indices[RT_MAX_MATERIALS];
 // - Daniel 28/02/2023
 // ------------------------------------------------------------------
 
-
-// Uncomment this to wait after each frame, effectively disabling triple buffering
-// #define RT_FORCE_HEAVY_SYNCHRONIZATION
-
 RT::D3D12State RT::g_d3d;
 RT::D3D12RasterState RT::g_d3d_raster;
 RT::TweakVars RT::tweak_vars;
@@ -355,7 +351,7 @@ namespace
 			defines[it.index].Value = Utf16FromUtf8(temp, kv->value);
 		}
 
-		IDxcBlob *blob = CompileShader(source, entry_point, L"cs_6_3", (UINT)defines_count, defines);
+		IDxcBlob *blob = CompileShader(source, entry_point, L"cs_6_5", (UINT)defines_count, defines);
 
 		if (!blob)
 			return nullptr;
@@ -735,6 +731,139 @@ namespace
 #endif
 	}
 
+	// -----------------------------------------------------------------------------------------------------
+	// Compute shaders
+
+	void ReloadComputeShader(ComputeShader* cs, const wchar_t* file, const wchar_t* entry_point)
+	{
+		uint64_t timestamp = GetLastWriteTime(file);
+
+		bool shader_file_updated = timestamp != cs->timestamp;
+		bool shader_defines_updated = g_shader_defines.last_modified_time != g_d3d.global_shader_defines.last_modified_time;
+
+		// NOTE(daniel): For reasons opaque to me, it seems sometimes the new file's timestamp
+		// is less than the current. So this tested (timestamp > cs->timestamp) before, but
+		// that turns out to be unreliable.
+		if (shader_file_updated || shader_defines_updated)
+		{
+			ID3D12PipelineState* new_pso = CreateComputePipeline(file, entry_point, g_d3d.global_root_sig);
+			if (new_pso)
+			{
+				RenderBackend::Flush();
+
+				SafeRelease(cs->pso);
+				cs->pso = new_pso;
+
+				OutputDebugStringW(L"Reloaded shader ");
+				OutputDebugStringW(file);
+				OutputDebugStringW(L" - ");
+				OutputDebugStringW(entry_point);
+				OutputDebugStringW(L"\n");
+			}
+			else
+			{
+				OutputDebugStringW(L"SHADER RELOAD FAILED: ");
+				OutputDebugStringW(file);
+				OutputDebugStringW(L" - ");
+				OutputDebugStringW(entry_point);
+				OutputDebugStringW(L"\n");
+			}
+			cs->timestamp = timestamp;
+		}
+	}
+
+	void ReloadComputeShadersIfThereAreNewOnes()
+	{
+		// The copy script writes a temporary "lock file" to indicate it is still copying, and we shouldn't try to reload yet
+		// I am using GetLastWriteTime returning 0 as a test for whether a file exists.
+		if (!GetLastWriteTime(L"assets/shaders/lock_file.temp"))
+		{
+			// ReloadComputeShader(&g_d3d.cs.restir_gen_candidates, L"assets/shaders/restir/gen_candidates.hlsl", L"ReSTIR_GenerateCandidates");
+
+			ReloadComputeShader(&g_d3d.cs.svgf_prepass, L"assets/shaders/denoiser/prepass.hlsl", L"Denoise_Prepass");
+			ReloadComputeShader(&g_d3d.cs.svgf_history_fix, L"assets/shaders/denoiser/history_fix.hlsl", L"Denoise_HistoryFix");
+			ReloadComputeShader(&g_d3d.cs.svgf_resample, L"assets/shaders/denoiser/resample.hlsl", L"Denoise_Resample");
+			ReloadComputeShader(&g_d3d.cs.svgf_post_resample, L"assets/shaders/denoiser/post_resample.hlsl", L"Denoise_PostResample");
+			ReloadComputeShader(&g_d3d.cs.svgf_blur, L"assets/shaders/denoise.hlsl", L"DenoiseDirectCS");
+
+			ReloadComputeShader(&g_d3d.cs.taa, L"assets/shaders/taa.hlsl", L"TemporalAntiAliasingCS");
+
+			ReloadComputeShader(&g_d3d.cs.bloom_prepass, L"assets/shaders/bloom.hlsl", L"Bloom_Prepass");
+			ReloadComputeShader(&g_d3d.cs.bloom_blur_horz, L"assets/shaders/bloom.hlsl", L"Bloom_BlurHorz");
+			ReloadComputeShader(&g_d3d.cs.bloom_blur_vert, L"assets/shaders/bloom.hlsl", L"Bloom_BlurVert");
+
+			ReloadComputeShader(&g_d3d.cs.composite, L"assets/shaders/composite.hlsl", L"CompositeCS");
+			ReloadComputeShader(&g_d3d.cs.post_process, L"assets/shaders/post_process.hlsl", L"PostProcessCS");
+			ReloadComputeShader(&g_d3d.cs.resolve_final_color, L"assets/shaders/resolve_final_color.hlsl", L"ResolveFinalColorCS");
+		}
+	}
+
+	void CreateGenMipMapComputeShader()
+	{
+		D3D12_DESCRIPTOR_RANGE1 ranges[2] = {};
+		ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		ranges[0].NumDescriptors = 1;
+		ranges[0].OffsetInDescriptorsFromTableStart = 0;
+		ranges[0].BaseShaderRegister = 0;
+		ranges[0].RegisterSpace = 0;
+		ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+
+		ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+		ranges[1].NumDescriptors = 4;
+		ranges[1].OffsetInDescriptorsFromTableStart = 0;
+		ranges[1].BaseShaderRegister = 0;
+		ranges[1].RegisterSpace = 0;
+		ranges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
+
+		D3D12_ROOT_PARAMETER1 root_parameters[3] = {};
+		root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+		root_parameters[0].Constants.Num32BitValues = sizeof(GenMipMapSettings) / 4;
+		root_parameters[0].Constants.ShaderRegister = 0;
+		root_parameters[0].Constants.RegisterSpace = 0;
+		root_parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		root_parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		root_parameters[1].DescriptorTable.NumDescriptorRanges = 1;
+		root_parameters[1].DescriptorTable.pDescriptorRanges = &ranges[0];
+		root_parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		root_parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		root_parameters[2].DescriptorTable.NumDescriptorRanges = 1;
+		root_parameters[2].DescriptorTable.pDescriptorRanges = &ranges[1];
+		root_parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		D3D12_STATIC_SAMPLER_DESC static_samplers[1] = {};
+		static_samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+		static_samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		static_samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		static_samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		static_samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		static_samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+		static_samplers[0].MinLOD = 0.0f;
+		static_samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+		static_samplers[0].MipLODBias = 0;
+		static_samplers[0].ShaderRegister = 0;
+		static_samplers[0].RegisterSpace = 0;
+		static_samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+		D3D12_VERSIONED_ROOT_SIGNATURE_DESC gen_mipmap_root_sig_desc = {};
+		gen_mipmap_root_sig_desc.Desc_1_1.NumParameters = RT_ARRAY_COUNT(root_parameters);
+		gen_mipmap_root_sig_desc.Desc_1_1.pParameters = &root_parameters[0];
+		gen_mipmap_root_sig_desc.Desc_1_1.NumStaticSamplers = RT_ARRAY_COUNT(static_samplers);
+		gen_mipmap_root_sig_desc.Desc_1_1.pStaticSamplers = &static_samplers[0];
+		gen_mipmap_root_sig_desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+		gen_mipmap_root_sig_desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+		ID3DBlob* serialized_root_sig = CompileVersionedRootSignature(gen_mipmap_root_sig_desc);
+		DX_CALL(g_d3d.device->CreateRootSignature(0, serialized_root_sig->GetBufferPointer(), serialized_root_sig->GetBufferSize(), IID_PPV_ARGS(&g_d3d.gen_mipmap_root_sig)));
+		g_d3d.gen_mipmap_root_sig->SetName(L"Gen mip maps root signature");
+
+		SafeRelease(serialized_root_sig);
+
+		g_d3d.cs.gen_mipmaps.pso = CreateComputePipeline(L"assets/shaders/gen_mipmap.hlsl", L"GenMipMapCS", g_d3d.gen_mipmap_root_sig);
+	}
+
+#if RT_DISPATCH_RAYS
 	void ReloadRaytracingShaders()
 	{
 		if (GetLastWriteTime(L"assets/shaders/lock_file.temp"))
@@ -1058,12 +1187,14 @@ namespace
 			params->hitgroups[params->hitgroup_count++] = hitgroup;
 		}
 	}
+#endif
 
 	void ReloadAllTheRaytracingStateAsNecessary(bool init)
 	{
 		// ------------------------------------------------------------------
 		// Initialize raytracing shaders
 
+#if RT_DISPATCH_RAYS
 		if (init)
 		{
 			g_d3d.rt_shaders.primary_raygen  = { L"assets/shaders/primary_ray.hlsl", L"PrimaryRaygen", primary_raygen_export_name };
@@ -1077,6 +1208,7 @@ namespace
 			g_d3d.rt_shaders.occlusion_any   = { L"assets/shaders/occlusion.hlsl", L"OcclusionAnyhit", occlusion_anyhit_export_name };
 			g_d3d.rt_shaders.occlusion_miss  = { L"assets/shaders/occlusion.hlsl", L"OcclusionMiss", occlusion_miss_export_name };
 		}
+
 		
 		ReloadRaytracingShaders();
 
@@ -1139,6 +1271,15 @@ namespace
 		{
 			ReloadShaderTables();
 		}
+#elif RT_INLINE_RAYTRACING
+		(void)init;
+		if (!GetLastWriteTime(L"assets/shaders/lock_file.temp"))
+		{
+			ReloadComputeShader(&g_d3d.rt_shaders.primary_inline, L"assets/shaders/primary_ray_inline.hlsl", L"PrimaryRayInline");
+			ReloadComputeShader(&g_d3d.rt_shaders.direct_lighting_inline, L"assets/shaders/direct_lighting_inline.hlsl", L"DirectLightingInline");
+			ReloadComputeShader(&g_d3d.rt_shaders.indirect_lighting_inline, L"assets/shaders/indirect_lighting_inline.hlsl", L"IndirectLightingInline");
+		}
+#endif
 	}
 
 	// Creates the rasterization root signature and pipeline state for rendering game UI
@@ -1551,137 +1692,6 @@ namespace
 		DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&g_d3d.dxc_utils));
 		g_d3d.dxc_utils->CreateDefaultIncludeHandler(&g_d3d.dxc_include_handler);
     }
-
-	// ------------------------------------------------------------------------
-
-	void ReloadComputeShader(ComputeShader *cs, const wchar_t *file, const wchar_t *entry_point)
-	{
-		uint64_t timestamp = GetLastWriteTime(file);
-
-		bool shader_file_updated = timestamp != cs->timestamp;
-		bool shader_defines_updated = g_shader_defines.last_modified_time != g_d3d.global_shader_defines.last_modified_time;
-
-		// NOTE(daniel): For reasons opaque to me, it seems sometimes the new file's timestamp
-		// is less than the current. So this tested (timestamp > cs->timestamp) before, but
-		// that turns out to be unreliable.
-		if (shader_file_updated || shader_defines_updated)
-		{
-			ID3D12PipelineState *new_pso = CreateComputePipeline(file, entry_point, g_d3d.global_root_sig);
-			if (new_pso)
-			{
-				RenderBackend::Flush();
-
-				SafeRelease(cs->pso);
-				cs->pso = new_pso;
-
-				OutputDebugStringW(L"Reloaded shader ");
-				OutputDebugStringW(file);
-				OutputDebugStringW(L" - ");
-				OutputDebugStringW(entry_point);
-				OutputDebugStringW(L"\n");
-			}
-			else
-			{
-				OutputDebugStringW(L"SHADER RELOAD FAILED: ");
-				OutputDebugStringW(file);
-				OutputDebugStringW(L" - ");
-				OutputDebugStringW(entry_point);
-				OutputDebugStringW(L"\n");
-			}
-			cs->timestamp = timestamp;
-		}
-	}
-
-	void ReloadComputeShadersIfThereAreNewOnes()
-	{
-		// The copy script writes a temporary "lock file" to indicate it is still copying, and we shouldn't try to reload yet
-		// I am using GetLastWriteTime returning 0 as a test for whether a file exists.
-		if (!GetLastWriteTime(L"assets/shaders/lock_file.temp"))
-		{
-			// ReloadComputeShader(&g_d3d.cs.restir_gen_candidates, L"assets/shaders/restir/gen_candidates.hlsl", L"ReSTIR_GenerateCandidates");
-
-			ReloadComputeShader(&g_d3d.cs.svgf_prepass, L"assets/shaders/denoiser/prepass.hlsl", L"Denoise_Prepass");
-			ReloadComputeShader(&g_d3d.cs.svgf_history_fix, L"assets/shaders/denoiser/history_fix.hlsl", L"Denoise_HistoryFix");
-			ReloadComputeShader(&g_d3d.cs.svgf_resample, L"assets/shaders/denoiser/resample.hlsl", L"Denoise_Resample");
-			ReloadComputeShader(&g_d3d.cs.svgf_post_resample, L"assets/shaders/denoiser/post_resample.hlsl", L"Denoise_PostResample");
-			ReloadComputeShader(&g_d3d.cs.svgf_blur, L"assets/shaders/denoise.hlsl", L"DenoiseDirectCS");
-
-			ReloadComputeShader(&g_d3d.cs.taa, L"assets/shaders/taa.hlsl", L"TemporalAntiAliasingCS");
-
-			ReloadComputeShader(&g_d3d.cs.bloom_prepass, L"assets/shaders/bloom.hlsl", L"Bloom_Prepass");
-			ReloadComputeShader(&g_d3d.cs.bloom_blur_horz, L"assets/shaders/bloom.hlsl", L"Bloom_BlurHorz");
-			ReloadComputeShader(&g_d3d.cs.bloom_blur_vert, L"assets/shaders/bloom.hlsl", L"Bloom_BlurVert");
-
-			ReloadComputeShader(&g_d3d.cs.composite, L"assets/shaders/composite.hlsl", L"CompositeCS");
-			ReloadComputeShader(&g_d3d.cs.post_process, L"assets/shaders/post_process.hlsl", L"PostProcessCS");
-			ReloadComputeShader(&g_d3d.cs.resolve_final_color, L"assets/shaders/resolve_final_color.hlsl", L"ResolveFinalColorCS");
-		}
-	}
-
-	void CreateGenMipMapComputeShader()
-	{
-		D3D12_DESCRIPTOR_RANGE1 ranges[2] = {};
-		ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-		ranges[0].NumDescriptors = 1;
-		ranges[0].OffsetInDescriptorsFromTableStart = 0;
-		ranges[0].BaseShaderRegister = 0;
-		ranges[0].RegisterSpace = 0;
-		ranges[0].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
-
-		ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-		ranges[1].NumDescriptors = 4;
-		ranges[1].OffsetInDescriptorsFromTableStart = 0;
-		ranges[1].BaseShaderRegister = 0;
-		ranges[1].RegisterSpace = 0;
-		ranges[1].Flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE;
-
-		D3D12_ROOT_PARAMETER1 root_parameters[3] = {};
-		root_parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-		root_parameters[0].Constants.Num32BitValues = sizeof(GenMipMapSettings) / 4;
-		root_parameters[0].Constants.ShaderRegister = 0;
-		root_parameters[0].Constants.RegisterSpace = 0;
-		root_parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-		root_parameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		root_parameters[1].DescriptorTable.NumDescriptorRanges = 1;
-		root_parameters[1].DescriptorTable.pDescriptorRanges = &ranges[0];
-		root_parameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-		root_parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		root_parameters[2].DescriptorTable.NumDescriptorRanges = 1;
-		root_parameters[2].DescriptorTable.pDescriptorRanges = &ranges[1];
-		root_parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-		D3D12_STATIC_SAMPLER_DESC static_samplers[1] = {};
-		static_samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		static_samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		static_samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		static_samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-		static_samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-		static_samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-		static_samplers[0].MinLOD = 0.0f;
-		static_samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
-		static_samplers[0].MipLODBias = 0;
-		static_samplers[0].ShaderRegister = 0;
-		static_samplers[0].RegisterSpace = 0;
-		static_samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-		D3D12_VERSIONED_ROOT_SIGNATURE_DESC gen_mipmap_root_sig_desc = {};
-		gen_mipmap_root_sig_desc.Desc_1_1.NumParameters = RT_ARRAY_COUNT(root_parameters);
-		gen_mipmap_root_sig_desc.Desc_1_1.pParameters = &root_parameters[0];
-		gen_mipmap_root_sig_desc.Desc_1_1.NumStaticSamplers = RT_ARRAY_COUNT(static_samplers);
-		gen_mipmap_root_sig_desc.Desc_1_1.pStaticSamplers = &static_samplers[0];
-		gen_mipmap_root_sig_desc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-		gen_mipmap_root_sig_desc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-
-		ID3DBlob* serialized_root_sig = CompileVersionedRootSignature(gen_mipmap_root_sig_desc);
-		DX_CALL(g_d3d.device->CreateRootSignature(0, serialized_root_sig->GetBufferPointer(), serialized_root_sig->GetBufferSize(), IID_PPV_ARGS(&g_d3d.gen_mipmap_root_sig)));
-		g_d3d.gen_mipmap_root_sig->SetName(L"Gen mip maps root signature");
-
-		SafeRelease(serialized_root_sig);
-
-		g_d3d.cs.gen_mipmaps.pso = CreateComputePipeline(L"assets/shaders/gen_mipmap.hlsl", L"GenMipMapCS", g_d3d.gen_mipmap_root_sig);
-	}
 
 	D3D12_RESOURCE_BARRIER AliasingBarrier(ID3D12Resource* resource_before, ID3D12Resource* resource_after)
 	{
@@ -3747,7 +3757,13 @@ void RenderBackend::RaytraceRender()
 	command_list->SetDescriptorHeaps(1, heaps);
 
 	// ------------------------------------------------------------------
-	// Dispatch Rays
+	// Determine dispatch dimensions
+
+	uint32_t dispatch_w = RT_MAX((g_d3d.render_width + GROUP_X - 1) / GROUP_X, 1);
+	uint32_t dispatch_h = RT_MAX((g_d3d.render_height + GROUP_Y - 1) / GROUP_Y, 1);
+
+	// ------------------------------------------------------------------
+	// Dispatch Rays / Inline raytracing
 
 	/*
 
@@ -3771,7 +3787,9 @@ void RenderBackend::RaytraceRender()
 
 	*/
 
+#if RT_DISPATCH_RAYS
 	size_t hitgroup_record_stride = RT_ALIGN_POW2(sizeof(ShaderRecord), D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT);
+#endif
 
 	{
 		// ------------------------------------------------------------------
@@ -3779,6 +3797,7 @@ void RenderBackend::RaytraceRender()
 
 		GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_PrimaryRay);
 
+#if RT_DISPATCH_RAYS
 		D3D12_DISPATCH_RAYS_DESC desc = {};
 		desc.RayGenerationShaderRecord.StartAddress = GetShaderTableGPUPtr(g_d3d.raygen_shader_table, 0);
 		desc.RayGenerationShaderRecord.SizeInBytes = sizeof(ShaderRecord);
@@ -3801,6 +3820,14 @@ void RenderBackend::RaytraceRender()
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
 		command_list->DispatchRays(&desc);
+#elif RT_INLINE_RAYTRACING
+		command_list->SetPipelineState(g_d3d.rt_shaders.primary_inline.pso);
+		command_list->SetComputeRootSignature(g_d3d.global_root_sig);
+		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
+		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
+		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
+		command_list->Dispatch(dispatch_w, dispatch_h, 1);
+#endif
 
 		// UAV barriers for all render targets of the primary ray dispatch
 		// Note(Justin): This is not correct since the ping-pong'd render targets are not taken into account here
@@ -3824,6 +3851,7 @@ void RenderBackend::RaytraceRender()
 
 		GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_DirectLighting);
 
+#if RT_DISPATCH_RAYS
 		D3D12_DISPATCH_RAYS_DESC desc = {};
 		desc.RayGenerationShaderRecord.StartAddress = GetShaderTableGPUPtr(g_d3d.raygen_shader_table, 1);
 		desc.RayGenerationShaderRecord.SizeInBytes = sizeof(ShaderRecord);
@@ -3846,6 +3874,14 @@ void RenderBackend::RaytraceRender()
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
 		command_list->DispatchRays(&desc);
+#elif RT_INLINE_RAYTRACING
+		command_list->SetPipelineState(g_d3d.rt_shaders.direct_lighting_inline.pso);
+		command_list->SetComputeRootSignature(g_d3d.global_root_sig);
+		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
+		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
+		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
+		command_list->Dispatch(dispatch_w, dispatch_h, 1);
+#endif
 
 		// UAV barriers for all render targets of the direct lighting dispatch
 		ID3D12Resource* uav_render_targets[] =
@@ -3885,6 +3921,7 @@ void RenderBackend::RaytraceRender()
 		{
 			GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_IndirectLighting);
 
+#if RT_DISPATCH_RAYS
 			D3D12_DISPATCH_RAYS_DESC desc = {};
 			desc.RayGenerationShaderRecord.StartAddress = GetShaderTableGPUPtr(g_d3d.raygen_shader_table, 2);
 			desc.RayGenerationShaderRecord.SizeInBytes = sizeof(ShaderRecord);
@@ -3907,6 +3944,14 @@ void RenderBackend::RaytraceRender()
 			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
 			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
 			command_list->DispatchRays(&desc);
+#elif RT_INLINE_RAYTRACING
+			command_list->SetPipelineState(g_d3d.rt_shaders.indirect_lighting_inline.pso);
+			command_list->SetComputeRootSignature(g_d3d.global_root_sig);
+			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
+			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
+			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
+			command_list->Dispatch(dispatch_w, dispatch_h, 1);
+#endif
 
 			// UAV barriers for all render targets of the indirect lighting dispatch
 			ID3D12Resource* uav_render_targets[] =
@@ -3928,12 +3973,6 @@ void RenderBackend::RaytraceRender()
 	command_list->CopyResource(frame->pixel_debug_readback, g_d3d.pixel_debug.uav_resource);
 	ResourceTransition(command_list, g_d3d.pixel_debug.uav_resource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 #endif
-
-	// ------------------------------------------------------------------
-	// Denoise
-
-	uint32_t dispatch_w = RT_MAX((g_d3d.render_width + GROUP_X - 1) / GROUP_X, 1);
-	uint32_t dispatch_h = RT_MAX((g_d3d.render_height + GROUP_Y - 1) / GROUP_Y, 1);
 
 	// ------------------------------------------------------------------
 	// Denoise

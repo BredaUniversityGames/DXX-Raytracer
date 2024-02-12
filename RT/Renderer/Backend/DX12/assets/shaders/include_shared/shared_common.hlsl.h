@@ -10,6 +10,11 @@
 // ------------------------------------------------------------------
 // Defines, constants, etc
 
+// If RT_DISPATCH_RAYS is 1, DXX-Raytracer will use the DXR DispatchRays API with shader tables to do the raytracing
+// If RT_DISPATCH_RAYS is 0 (and therefore RT_INLINE_RAYTRACING is 1), DXX-Raytracer will use the DXR Inline Raytracing API instead
+#define RT_DISPATCH_RAYS 0
+#define RT_INLINE_RAYTRACING !RT_DISPATCH_RAYS
+
 #define RT_PIXEL_DEBUG 0 // TODO(daniel): Make this be dependent on the build configuration and make it stand out in the GPU profiler so you can tell it apart from actual work
 #define GROUP_X 16
 #define GROUP_Y 16

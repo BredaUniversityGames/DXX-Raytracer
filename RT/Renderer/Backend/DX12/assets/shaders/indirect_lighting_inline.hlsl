@@ -1,27 +1,27 @@
-#ifndef INDIRECT_LIGHTING_HLSL
-#define INDIRECT_LIGHTING_HLSL
+#ifndef INDIRECT_LIGHTING_INLINE_HLSL
+#define INDIRECT_LIGHTING_INLINE_HLSL
 
+#include "include/common.hlsl"
 #include "primary_ray.hlsli"
 #include "direct_lighting.hlsli"
 
-[shader("raygeneration")]
-void IndirectLightingRaygen()
+[numthreads(GROUP_X, GROUP_Y, 1)]
+void IndirectLightingInline(COMPUTE_ARGS)
 {
-	// -----------------------------------------------------------
-	// Compute indirect lighting
+	// ----------------------------------------------------------------------------
+	// Fetch geometry data from G-buffers
 
-	uint2 dispatch_idx = DispatchRaysIndex().xy;
-	uint2 dispatch_dim = DispatchRaysDimensions().xy;
-
-	// Get G-buffer values
-	float3 gbuf_albedo                = img_albedo[dispatch_idx].xyz;
-	float3 gbuf_normal                = DecodeNormalOctahedron(img_normal[dispatch_idx].xy);
-	float3 gbuf_view_dir              = img_view_dir[dispatch_idx].xyz;
-	float  gbuf_depth                 = img_depth[dispatch_idx];
-	float  gbuf_metallic              = img_metallic[dispatch_idx].x;
-	float  gbuf_roughness             = img_roughness[dispatch_idx].x;
-	uint   gbuf_material              = img_material[dispatch_idx].x;
-	uint2  gbuf_instance_idx_prim_idx = img_visibility_prim[dispatch_idx].xy;
+	float3 gbuf_albedo                = img_albedo[pixel_pos].xyz;
+	float3 gbuf_normal                = DecodeNormalOctahedron(img_normal[pixel_pos].xy);
+	float3 gbuf_view_dir              = img_view_dir[pixel_pos].xyz;
+	float  gbuf_depth                 = img_depth[pixel_pos];
+	float  gbuf_metallic              = img_metallic[pixel_pos].x;
+	float  gbuf_roughness             = img_roughness[pixel_pos].x;
+	uint   gbuf_material              = img_material[pixel_pos].x;
+	uint2  gbuf_instance_idx_prim_idx = img_visibility_prim[pixel_pos].xy;
+	
+	// ----------------------------------------------------------------------------
+	// If we have hit valid geometry on this pixel, we evaluate the indirect lighting
 
 	if (HasHitGeometry(gbuf_instance_idx_prim_idx))
 	{
@@ -47,8 +47,8 @@ void IndirectLightingRaygen()
 			float3x3 basis     = ConstructOrthonormalBasis(gbuf_normal);
 			float3x3 basis_inv = transpose(basis);
 
-			float r1 = RandomSample(dispatch_idx, Random_IndirectJitterX);
-			float r2 = RandomSample(dispatch_idx, Random_IndirectJitterY);
+			float r1 = RandomSample(pixel_pos, Random_IndirectJitterX);
+			float r2 = RandomSample(pixel_pos, Random_IndirectJitterY);
 
 			float3 bounce_direction    = float3(0, 1, 0);
 			float3 specular_throughput = 0;
@@ -61,7 +61,7 @@ void IndirectLightingRaygen()
 
 			if (tweak.enable_pbr && tweak.importance_sample_brdf)
 			{
-				float r_specular = RandomSample(dispatch_idx, Random_IndirectSpecular);
+				float r_specular = RandomSample(pixel_pos, Random_IndirectSpecular);
 
 				float specular_probability = lerp(0.5, 1.0, material_desc.metallic);
 				specular_bounce = r_specular <= specular_probability;
@@ -160,7 +160,7 @@ void IndirectLightingRaygen()
 				bounce_direction = L;
 			}
 
-			float3 gbuf_world_p = ReconstructWorldPosFromGBuffer(dispatch_idx);
+			float3 gbuf_world_p = ReconstructWorldPosFromGBuffer(pixel_pos);
 
 			// Set up geometry input for primary ray trace
 			PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
@@ -171,7 +171,7 @@ void IndirectLightingRaygen()
 			ray.TMax      = RT_RAY_T_MAX;
 
 			// Trace the primary ray
-			TracePrimaryRay(ray, ray_payload, dispatch_idx);
+			TracePrimaryRay(ray, ray_payload, pixel_pos);
 
 			// Set up geometry output from primary ray trace and set non-zero defaults where necessary
 			HitGeometry geo = (HitGeometry)0;
@@ -179,14 +179,14 @@ void IndirectLightingRaygen()
 			// Get geometry data from primary ray trace
 			GetHitGeometryFromRay(ray,
 				ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
-				0, dispatch_idx, dispatch_dim, geo
+				0, pixel_pos, g_global_cb.render_dim, geo
 			);
-			geo.world_p = gbuf_world_p + ray_payload.hit_distance * bounce_direction;
+			geo.world_p = gbuf_world_p + ray_payload.hit_distance*bounce_direction;
 
 			// Set up direct lighting output
 			DirectLightingOutput direct_lighting_output = (DirectLightingOutput)0;
 
-			CalculateDirectLightingAtSurface(geo, direct_lighting_output, dispatch_idx, true);
+			CalculateDirectLightingAtSurface(geo, direct_lighting_output, pixel_pos, true);
 
 			// TODO(daniel): Fetching the material again? Should be optimized away by the compiler
 			Material material = g_materials[geo.material_index];
@@ -229,10 +229,10 @@ void IndirectLightingRaygen()
 				indirect_specular *= rcp(lerp(0.04, 0.01 + gbuf_albedo, gbuf_metallic));
 			}
 
-			img_spec[dispatch_idx].rgb += indirect_specular;
-			img_diff[dispatch_idx].rgb += indirect_diffuse;
+			img_spec[pixel_pos].rgb += indirect_specular;
+			img_diff[pixel_pos].rgb += indirect_diffuse;
 		}
 	}
 }
 
-#endif /* INDIRECT_LIGHTING_HLSL */
+#endif /* INDIRECT_LIGHTING_INLINE_HLSL */

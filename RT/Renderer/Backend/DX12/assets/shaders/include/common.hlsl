@@ -728,7 +728,7 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 	}
 }
 
-bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics, inout Material material)
+bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics, int2 pixel_pos, inout Material material)
 {
 	InstanceData instance_data = g_instance_data_buffer[instance_idx];
 	RT_Triangle hit_triangle = GetHitTriangle(instance_data.triangle_buffer_idx, primitive_idx);
@@ -806,7 +806,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 	{
 		float4 color = UnpackRGBA(instance_data.material_color);
 		float4 tri_color = UnpackRGBA(hit_triangle.color);
-		float  dither = RandomSample(DispatchRaysIndex().xy, InstanceIndex());
+		float  dither = RandomSample(pixel_pos, instance_idx);
 
 		return dither > color.a * tri_color.a;
 	}

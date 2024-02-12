@@ -11,19 +11,88 @@ struct PrimaryRayPayload
     float hit_distance;
 };
 
-void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload)
+void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload, uint2 pixel_pos)
 {
+#if RT_DISPATCH_RAYS
+
     TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 0, 0, ray, payload);
+
+#elif RT_INLINE_RAYTRACING
+    
+	RayQuery<RAY_FLAG_NONE> ray_query;
+	ray_query.TraceRayInline(
+		g_scene,
+		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+		~0,
+		ray
+	);
+	
+	// ---------------------------------------------------------------------------------------------------------------
+	// Inline raytracing loop, check for (super-)transparency on surface hit
+
+	while (ray_query.Proceed())
+	{
+		switch (ray_query.CandidateType())
+		{
+			case CANDIDATE_NON_OPAQUE_TRIANGLE:
+			{
+				Material hit_material;
+
+				// Check for transparency on hit candidate
+				if (!IsHitTransparent(
+					ray_query.CandidateInstanceIndex(),
+					ray_query.CandidatePrimitiveIndex(),
+					ray_query.CandidateTriangleBarycentrics(),
+					pixel_pos,
+					hit_material
+				))
+				{
+					ray_query.CommitNonOpaqueTriangleHit();
+				}
+				break;
+			}
+		}
+	}
+	
+	// ---------------------------------------------------------------------------------------------------------------
+	// Determine instance/primitive indices, barycentrics and the hit distance
+	// Default values are set for a ray miss
+
+	payload.instance_idx = ~0;
+	payload.primitive_idx = ~0;
+	payload.barycentrics = float2(0.0, 0.0);
+	payload.hit_distance = RT_RAY_T_MAX;
+
+	switch (ray_query.CommittedStatus())
+	{
+		case COMMITTED_TRIANGLE_HIT:
+		{
+			// Triangle hit
+			payload.instance_idx = ray_query.CommittedInstanceIndex();
+			payload.primitive_idx = ray_query.CommittedPrimitiveIndex();
+			payload.barycentrics = ray_query.CommittedTriangleBarycentrics();
+			payload.hit_distance = ray_query.CommittedRayT();
+			break;
+		}
+		// We do not need this case because we initialize the values by default to be as if the ray missed
+		case COMMITTED_NOTHING:
+		{
+			// Missed
+			break;
+		}
+	}
+
+#endif
 }
 
-struct GeometryRayOutput
+struct HitGeometry
 {
     InstanceData instance_data;
     RT_Triangle hit_triangle;
     uint material_index;
     float3 albedo;
     float3 emissive;
-    float3 world_p; // bullshit because it's not geometry ray output, but it's because in here because this struct is also direct lighting input
+    float3 world_p;
     float2 normal;
     float depth;
     float2 motion;
@@ -34,24 +103,26 @@ struct GeometryRayOutput
     float2 vis_bary;
 };
 
-void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_payload, uint recursion_depth, inout GeometryRayOutput OUT)
+void GetHitGeometryFromRay(RayDesc ray,
+    uint instance_index, uint primitive_index, float2 barycentrics, float hit_distance,
+    uint recursion_depth, int2 pixel_pos, int2 render_dim, inout HitGeometry OUT)
 {
     // -------------------------------------------------------------------------------------
     // Determine gbuffer hit world direction value
 
-    OUT.view_dir = ray_desc.Direction;
+    OUT.view_dir = ray.Direction;
 
     // -------------------------------------------------------------------------------------
     // Determine gbuffer visibility values
 
-    OUT.vis_prim = uint2(ray_payload.instance_idx, ray_payload.primitive_idx);
-    OUT.vis_bary = ray_payload.barycentrics;
+    OUT.vis_prim = uint2(instance_index, primitive_index);
+    OUT.vis_bary = barycentrics;
 
     if (HasHitGeometry(OUT.vis_prim))
     {
         // Get instance data and hit triangle
-        OUT.instance_data = g_instance_data_buffer[ray_payload.instance_idx];
-        OUT.hit_triangle = GetHitTriangle(OUT.instance_data.triangle_buffer_idx, ray_payload.primitive_idx);
+        OUT.instance_data = g_instance_data_buffer[instance_index];
+        OUT.hit_triangle = GetHitTriangle(OUT.instance_data.triangle_buffer_idx, primitive_index);
 
         // -------------------------------------------------------------------------------------
         // Set up hit material
@@ -59,7 +130,7 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
         float2 uv = (float2)0;
 		float3 interpolated_normal = (float3)0;
 		float3 tangent = (float3)0;
-        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, ray_payload.barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
+        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
         Material hit_material = g_materials[OUT.material_index];
 
         float3 emissive_factor = UnpackRGBE(hit_material.emissive_factor);
@@ -106,7 +177,7 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
             // Compute texture gradients using ray cones to sample textures anisotropically
 
             float3 triangle_pos_world[3] = { OUT.hit_triangle.pos0, OUT.hit_triangle.pos1, OUT.hit_triangle.pos2 };
-            float3 interpolated_pos_world = GetHitAttribute(triangle_pos_world, ray_payload.barycentrics);
+            float3 interpolated_pos_world = GetHitAttribute(triangle_pos_world, barycentrics);
             interpolated_pos_world = mul(to_world, float4(interpolated_pos_world, 1)).xyz;
             triangle_pos_world[0] = mul(to_world, float4(triangle_pos_world[0], 1)).xyz;
             triangle_pos_world[1] = mul(to_world, float4(triangle_pos_world[1], 1)).xyz;
@@ -119,17 +190,17 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
 
             if (recursion_depth == 0)
             {
-                RayDesc ray_desc_x = GetRayDesc(DispatchRaysIndex().xy + uint2(1, 0), DispatchRaysDimensions().xy);
-                RayDesc ray_desc_y = GetRayDesc(DispatchRaysIndex().xy + uint2(0, 1), DispatchRaysDimensions().xy);
-                half_cone_angle = sqrt(1.0 - square(min(dot(ray_desc.Direction, ray_desc_x.Direction), dot(ray_desc.Direction, ray_desc_y.Direction))));
+                RayDesc ray_x = GetRayDesc(pixel_pos + uint2(1, 0), render_dim);
+                RayDesc ray_y = GetRayDesc(pixel_pos + uint2(0, 1), render_dim);
+                half_cone_angle = sqrt(1.0 - square(min(dot(ray.Direction, ray_x.Direction), dot(ray.Direction, ray_y.Direction))));
             }
             else
             {
-                half_cone_angle = ray_payload.hit_distance * tweak.secondary_bounce_bias + img_roughness[DispatchRaysIndex().xy].r * tweak.secondary_bounce_bias;
+                half_cone_angle = hit_distance * tweak.secondary_bounce_bias + img_roughness[pixel_pos].r * tweak.secondary_bounce_bias;
             }
 
             float2 tex_gradient1, tex_gradient2;
-            ComputeTextureGradientRayCone(ray_desc.Direction, ray_payload.hit_distance * half_cone_angle, ray_payload.barycentrics,
+            ComputeTextureGradientRayCone(ray.Direction, hit_distance * half_cone_angle, barycentrics,
                 interpolated_pos_world, interpolated_normal_world, triangle_pos_world, triangle_uv, tex_gradient1, tex_gradient2);
 
             // Calculate normal from normal map
@@ -181,7 +252,7 @@ void GetGeometryDataFromPrimaryRay(RayDesc ray_desc, PrimaryRayPayload ray_paylo
             // -------------------------------------------------------------------------------------
             // Determine gbuffer depth value
             
-            OUT.depth = ray_payload.hit_distance;
+            OUT.depth = hit_distance;
 
             // -------------------------------------------------------------------------------------
             // Determine gbuffer metallic roughness value

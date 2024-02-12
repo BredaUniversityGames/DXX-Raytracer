@@ -39,28 +39,30 @@ void PrimaryRaygen()
     uint2 dispatch_dim = DispatchRaysDimensions().xy;
 
     // Trace the primary ray
-    RayDesc ray_desc = GetRayDesc(dispatch_idx, dispatch_dim);
+    RayDesc ray = GetRayDesc(dispatch_idx, dispatch_dim);
     PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
-    TracePrimaryRay(ray_desc, ray_payload);
+    TracePrimaryRay(ray, ray_payload, dispatch_idx);
 
     // Set up geometry output from primary ray trace and set non-zero defaults where necessary
-    GeometryRayOutput geo_ray_output = (GeometryRayOutput)0;
-    geo_ray_output.albedo = 0;
-    geo_ray_output.depth = RT_RAY_T_MAX;
+    HitGeometry geo = (HitGeometry)0;
+    geo.depth = RT_RAY_T_MAX;
 
     // Get geometry data from primary ray trace
-    GetGeometryDataFromPrimaryRay(ray_desc, ray_payload, 0, geo_ray_output);
-    float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, ray_desc.Direction, ray_payload.hit_distance);
+    GetHitGeometryFromRay(ray,
+		ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
+		0, dispatch_idx, dispatch_dim, geo
+	);
+    float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, ray.Direction, ray_payload.hit_distance);
 
 	// -------------------------------------------------------------------------------------
 	// Determine gbuffer motion value
 
-	float3x4 world_to_object = float3x4(geo_ray_output.instance_data.world_to_object[0],
-										geo_ray_output.instance_data.world_to_object[1],
-										geo_ray_output.instance_data.world_to_object[2]);
+	float3x4 world_to_object = float3x4(geo.instance_data.world_to_object[0],
+										geo.instance_data.world_to_object[1],
+										geo.instance_data.world_to_object[2]);
 
 	float3 object_p     = mul(world_to_object, float4(geo_world_p, 1)).xyz;
-	float3 prev_world_p = mul(geo_ray_output.instance_data.object_to_world_prev, float4(object_p, 1)).xyz;
+	float3 prev_world_p = mul(geo.instance_data.object_to_world_prev, float4(object_p, 1)).xyz;
 
 	if (!tweak.object_motion_vectors || tweak.freezeframe)
     {
@@ -76,7 +78,7 @@ void PrimaryRaygen()
 	float2 screen_motion = prev_screen_p - screen_p;
 	screen_motion.y = -screen_motion.y;
 
-	geo_ray_output.motion = screen_motion;
+	geo.motion = screen_motion;
 
     // -------------------------------------------------------------------------------------
     // Write to G-buffers
@@ -94,26 +96,26 @@ void PrimaryRaygen()
     //      is used to get the InstanceData and RT_Triangle of the surface
     // img_visibility_bary - barycentric coordinates of surface at hit location
 
-    img_albedo[dispatch_idx] = float4(geo_ray_output.albedo, 1);
-    img_emissive[dispatch_idx] = float4(geo_ray_output.emissive, 0);
-    img_normal[dispatch_idx].xy = geo_ray_output.normal;
-    img_depth[dispatch_idx] = geo_ray_output.depth;
-    img_motion[dispatch_idx] = float4(geo_ray_output.motion, 0, 0);
-    img_view_dir[dispatch_idx] = float4(geo_ray_output.view_dir, select(geo_ray_output.depth == RT_RAY_T_MAX, 0, 1));
-    img_metallic[dispatch_idx] = geo_ray_output.metallic;
-    img_roughness[dispatch_idx] = geo_ray_output.roughness;
-    img_material[dispatch_idx] = geo_ray_output.material_index;
-    img_visibility_prim[dispatch_idx] = geo_ray_output.vis_prim;
-    img_visibility_bary[dispatch_idx] = geo_ray_output.vis_bary;
+    img_albedo[dispatch_idx] = float4(geo.albedo, 1);
+    img_emissive[dispatch_idx] = float4(geo.emissive, 0);
+    img_normal[dispatch_idx].xy = geo.normal;
+    img_depth[dispatch_idx] = geo.depth;
+    img_motion[dispatch_idx] = float4(geo.motion, 0, 0);
+    img_view_dir[dispatch_idx] = float4(geo.view_dir, select(geo.depth == RT_RAY_T_MAX, 0, 1));
+    img_metallic[dispatch_idx] = geo.metallic;
+    img_roughness[dispatch_idx] = geo.roughness;
+    img_material[dispatch_idx] = geo.material_index;
+    img_visibility_prim[dispatch_idx] = geo.vis_prim;
+    img_visibility_bary[dispatch_idx] = geo.vis_bary;
 
 #if RT_PIXEL_DEBUG
     // Write pixel debug data
     PixelDebugData debug_data = (PixelDebugData)0;
-    debug_data.primitive_id = geo_ray_output.vis_prim.y;
-    debug_data.metallic_roughness = float2(geo_ray_output.metallic, geo_ray_output.roughness);
-    debug_data.uv_barycentrics = float4(float2(0, 0), geo_ray_output.vis_bary);
-    debug_data.material_edge_index = geo_ray_output.hit_triangle.material_edge_index;
-    debug_data.material_index1 = geo_ray_output.material_index;
+    debug_data.primitive_id = geo.vis_prim.y;
+    debug_data.metallic_roughness = float2(geo.metallic, geo.roughness);
+    debug_data.uv_barycentrics = float4(float2(0, 0), geo.vis_bary);
+    debug_data.material_edge_index = geo.hit_triangle.material_edge_index;
+    debug_data.material_index1 = geo.material_index;
 
     WritePixelDebug(debug_data);
 #endif
@@ -132,7 +134,7 @@ void PrimaryClosesthit(inout PrimaryRayPayload payload, in BuiltInTriangleInters
 void PrimaryAnyhit(inout PrimaryRayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
 {
     Material hit_material;
-    if (IsHitTransparent(InstanceIndex(), PrimitiveIndex(), attr.barycentrics, hit_material))
+    if (IsHitTransparent(InstanceIndex(), PrimitiveIndex(), attr.barycentrics, DispatchRaysIndex().xy, hit_material))
     {
         IgnoreHit();
     }
