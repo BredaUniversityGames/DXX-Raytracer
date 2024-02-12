@@ -3759,6 +3759,12 @@ void RenderBackend::RaytraceRender()
 	// ------------------------------------------------------------------
 	// Determine dispatch dimensions
 
+	uint32_t rt_render_width = g_d3d.render_width_override == 0 ? g_d3d.render_width : g_d3d.render_width_override;
+	uint32_t rt_render_height = g_d3d.render_height_override == 0 ? g_d3d.render_height : g_d3d.render_height_override;
+
+	uint32_t rt_dispatch_w = RT_MAX((rt_render_width + GROUP_X - 1) / GROUP_X, 1);
+	uint32_t rt_dispatch_h = RT_MAX((rt_render_height + GROUP_Y - 1) / GROUP_Y, 1);
+
 	uint32_t dispatch_w = RT_MAX((g_d3d.render_width + GROUP_X - 1) / GROUP_X, 1);
 	uint32_t dispatch_h = RT_MAX((g_d3d.render_height + GROUP_Y - 1) / GROUP_Y, 1);
 
@@ -3826,7 +3832,7 @@ void RenderBackend::RaytraceRender()
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
-		command_list->Dispatch(dispatch_w, dispatch_h, 1);
+		command_list->Dispatch(rt_dispatch_w, rt_dispatch_h, 1);
 #endif
 
 		// UAV barriers for all render targets of the primary ray dispatch
@@ -3880,7 +3886,7 @@ void RenderBackend::RaytraceRender()
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
 		command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
-		command_list->Dispatch(dispatch_w, dispatch_h, 1);
+		command_list->Dispatch(rt_dispatch_w, rt_dispatch_h, 1);
 #endif
 
 		// UAV barriers for all render targets of the direct lighting dispatch
@@ -3950,7 +3956,7 @@ void RenderBackend::RaytraceRender()
 			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
 			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
 			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
-			command_list->Dispatch(dispatch_w, dispatch_h, 1);
+			command_list->Dispatch(rt_dispatch_w, rt_dispatch_h, 1);
 #endif
 
 			// UAV barriers for all render targets of the indirect lighting dispatch
