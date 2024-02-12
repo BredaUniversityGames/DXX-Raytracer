@@ -3721,6 +3721,12 @@ void RenderBackend::RaytraceRender()
 	}
 
 	// ------------------------------------------------------------------
+	// Set descriptor heap
+
+	ID3D12DescriptorHeap* heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
+	command_list->SetDescriptorHeaps(1, heaps);
+
+	// ------------------------------------------------------------------
 	// Clear render targets on first frame to avoid weird uninitialized
 	// render targets, and also when moving the camera in reference mode
 
@@ -3749,12 +3755,6 @@ void RenderBackend::RaytraceRender()
 	}
 
 	g_d3d.io.scene_transition = false;
-
-	// ------------------------------------------------------------------
-	// Set descriptor heap
-
-	ID3D12DescriptorHeap* heaps[] = { g_d3d.cbv_srv_uav.GetHeap() };
-	command_list->SetDescriptorHeaps(1, heaps);
 
 	// ------------------------------------------------------------------
 	// Determine dispatch dimensions
