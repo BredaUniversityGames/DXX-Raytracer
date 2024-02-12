@@ -14,7 +14,7 @@ void TraceOcclusionRay(RayDesc ray, inout OcclusionRayPayload payload, uint2 pix
 
 #elif RT_INLINE_RAYTRACING
 
-    RayQuery<RAY_FLAG_NONE> ray_query;
+    RayQuery<RAY_FLAG_CULL_BACK_FACING_TRIANGLES> ray_query;
 	ray_query.TraceRayInline(
 		g_scene,
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
@@ -35,7 +35,8 @@ void TraceOcclusionRay(RayDesc ray, inout OcclusionRayPayload payload, uint2 pix
 					ray_query.CandidatePrimitiveIndex(),
 					ray_query.CandidateTriangleBarycentrics(),
 					pixel_pos,
-					hit_material))
+					hit_material
+				))
 				{
 					ray_query.CommitNonOpaqueTriangleHit();
 				}
