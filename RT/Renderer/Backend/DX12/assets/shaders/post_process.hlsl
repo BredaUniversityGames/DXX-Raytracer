@@ -290,5 +290,5 @@ void PostProcessCS(COMPUTE_ARGS)
 	}
 
 	float3 final_color = lerp(color, debug_color, debug_blend_factor);
-	img_color_final[co] = float4(final_color, 1.0);
+	img_postfx[co] = float4(final_color, 1.0);
 }
