@@ -1,4 +1,7 @@
-emissive_strength = 3.500000
-albedo_texture    = arw01_basecolor.png
-metallic_texture  = arw01_metallic.png
+fsr2_reactive_mask = 1
+blackbody = 0
+is_light = 0
+albedo_texture = arw01_basecolor.png
+no_casting_shadow = 0
 roughness_texture = arw01_roughness.png
+emissive_strength = 3.500000

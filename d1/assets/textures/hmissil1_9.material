@@ -1,2 +1,6 @@
+fsr2_reactive_mask = 1
+blackbody = 0
+is_light = 0
+no_casting_shadow = 0
 roughness = 0.424000
 metalness = 1.000000
