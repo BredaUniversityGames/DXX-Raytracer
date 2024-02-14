@@ -144,10 +144,16 @@ void FSR2::AdjustRenderResolutionForFSRMode(uint32_t output_width, uint32_t outp
 		break;
 	}
 	}
+
+	render_width = std::max(render_width, 1u);
+	render_height = std::max(render_height, 1u);
 }
 
 void FSR2::OnWindowResize(uint32_t width, uint32_t height)
 {
+	width = std::max(width, 2u);
+	height = std::max(height, 2u);
+
 	FFX_CALL(ffxFsr2ContextDestroy(&data.context));
 
 	data.context_desc.displaySize = { width, height };

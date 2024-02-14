@@ -3201,8 +3201,6 @@ void RenderBackend::OnWindowResize(uint32_t width, uint32_t height)
 		g_d3d.render_width = width;
 		g_d3d.render_height = height;
 	}
-
-	printf("Output res: %ux%u | Render res: %ux%u\n", g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
 	
 	for (size_t i = 0; i < BACK_BUFFER_COUNT; ++i)
 	{
@@ -4338,7 +4336,9 @@ void RenderBackend::RaytraceRender()
 	UAVBarrier(command_list, g_d3d.rt.scene);
 
 	if (!g_d3d.scene.render_blit)
+	{
 		CopyResource(command_list, g_d3d.rt.color_final, g_d3d.rt.scene);
+	}
 
 	GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_FrameTime);
 	GPUProfiler::ResolveTimestampQueries(command_list);
