@@ -31,7 +31,7 @@ void Bloom_Prepass(COMPUTE_ARGS)
 float3 GaussianBlur(RWTexture2D<float4> source, int2 pixel_pos, int2 direction)
 {
 	int scale = 1L << (g_bloom_cb.iteration + 1);
-	int h = (g_global_cb.render_dim.y + scale - 1) / scale;
+	int h = (g_global_cb.output_dim.y + scale - 1) / scale;
 
 	int radius = 8;
 	float s = 26.5;
@@ -60,8 +60,8 @@ void Bloom_BlurHorz(COMPUTE_ARGS)
 {
 #ifdef DO_EARLY_OUT_IN_COMPUTE_SHADERS
 	int scale = 1L << (g_bloom_cb.iteration + 1);
-	int w = (g_global_cb.render_dim.x + scale - 1) / scale;
-	int h = (g_global_cb.render_dim.y + scale - 1) / scale;
+	int w = (g_global_cb.output_dim.x + scale - 1) / scale;
+	int h = (g_global_cb.output_dim.y + scale - 1) / scale;
 	if (pixel_pos.x >= w || pixel_pos.y >= h)
 	{
 		return;
@@ -85,8 +85,8 @@ void Bloom_BlurVert(COMPUTE_ARGS)
 {
 #ifdef DO_EARLY_OUT_IN_COMPUTE_SHADERS
 	int scale = 1L << (g_bloom_cb.iteration + 1);
-	int w = (g_global_cb.render_dim.x + scale - 1) / scale;
-	int h = (g_global_cb.render_dim.y + scale - 1) / scale;
+	int w = (g_global_cb.output_dim.x + scale - 1) / scale;
+	int h = (g_global_cb.output_dim.y + scale - 1) / scale;
 	if (pixel_pos.x >= w || pixel_pos.y >= h)
 	{
 		return;

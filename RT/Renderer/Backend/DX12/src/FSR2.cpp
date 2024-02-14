@@ -7,6 +7,8 @@
 
 using namespace RT;
 
+static float FsrModeScalingFactors[FSR_MODE_NUM_MODES] = { 1.0f, 1.5f, 1.7f, 2.0f, 3.0f };
+
 #define FFX_CALL(ffx_code_) \
     do { \
 		FfxErrorCode ffx_code = ffx_code_; \
@@ -55,10 +57,10 @@ void FSR2::Init()
 
 	// FSR2 context description
 	data.context_desc.device = ffxGetDeviceDX12(g_d3d.device);
-	data.context_desc.displaySize = { g_d3d.render_width, g_d3d.render_height };
+	data.context_desc.displaySize = { g_d3d.output_width, g_d3d.output_height };
 	// If dynamic resolution is enabled, this is the maximum that FSR2 will upscale to
 	// If dynamic resolution is disabled, this will be the target resolution for FSR2
-	data.context_desc.maxRenderSize = { g_d3d.render_width, g_d3d.render_height };
+	data.context_desc.maxRenderSize = { g_d3d.output_width, g_d3d.output_height };
 	data.context_desc.fpMessage = FSR2_MessageCallback;
 	data.context_desc.flags = FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR2_ENABLE_AUTO_EXPOSURE;
 	//data.context_desc.flags = FfxFsr2InitializationFlagBits;
@@ -105,4 +107,50 @@ void FSR2::Dispatch(ID3D12CommandList* command_list, ID3D12Resource* rt_color, I
 	dispatch_desc.cameraFovAngleVertical = camera_vfov_angle;
 
 	FFX_CALL(ffxFsr2ContextDispatch(&data.context, &dispatch_desc));
+}
+
+void FSR2::AdjustRenderResolutionForFSRMode(uint32_t output_width, uint32_t output_height, uint32_t& render_width, uint32_t& render_height)
+{
+	switch (g_d3d.amd_fsr2_mode)
+	{
+	case FSR_MODE_NO_UPSCALING:
+	{
+		render_width = output_width;
+		render_height = output_height;
+		break;
+	}
+	case FSR_MODE_QUALITY:
+	{
+		render_width = (uint32_t)((float)output_width / FsrModeScalingFactors[FSR_MODE_QUALITY]);
+		render_height = (uint32_t)((float)output_height / FsrModeScalingFactors[FSR_MODE_QUALITY]);
+		break;
+	}
+	case FSR_MODE_BALANCED:
+	{
+		render_width = (uint32_t)((float)output_width / FsrModeScalingFactors[FSR_MODE_BALANCED]);
+		render_height = (uint32_t)((float)output_height / FsrModeScalingFactors[FSR_MODE_BALANCED]);
+		break;
+	}
+	case FSR_MODE_PERFORMANCE:
+	{
+		render_width = (uint32_t)((float)output_width / FsrModeScalingFactors[FSR_MODE_PERFORMANCE]);
+		render_height = (uint32_t)((float)output_height / FsrModeScalingFactors[FSR_MODE_PERFORMANCE]);
+		break;
+	}
+	case FSR_MODE_ULTRA_PERFORMANCE:
+	{
+		render_width = (uint32_t)((float)output_width / FsrModeScalingFactors[FSR_MODE_ULTRA_PERFORMANCE]);
+		render_height = (uint32_t)((float)output_height / FsrModeScalingFactors[FSR_MODE_ULTRA_PERFORMANCE]);
+		break;
+	}
+	}
+}
+
+void FSR2::OnWindowResize(uint32_t width, uint32_t height)
+{
+	FFX_CALL(ffxFsr2ContextDestroy(&data.context));
+
+	data.context_desc.displaySize = { width, height };
+	data.context_desc.maxRenderSize = { width, height };
+	FFX_CALL(ffxFsr2ContextCreate(&data.context, &data.context_desc));
 }

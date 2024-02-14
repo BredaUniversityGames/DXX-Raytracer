@@ -76,9 +76,16 @@ TWEAK_BOOL   ("Anti-Lag",                   svgf_antilag,              true)
 TWEAK_CATEGORY_END()
 
 
+TWEAK_CATEGORY_BEGIN("Upscaling & Anti-aliasing")
+// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
+TWEAK_OPTIONS("Upscaling & AA mode", upscaling_aa_mode, 1, "Off", "TAA", "AMD FSR 2.2")
+TWEAK_OPTIONS("FSR2 mode", amd_fsr2_mode, 1, "No Upscaling", "Quality", "Balanced", "Performance", "Ultra performance")
+// ------------------------------------------------------------------------------------------------------------------
+TWEAK_CATEGORY_END();
+
+
 TWEAK_CATEGORY_BEGIN("TAA")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_BOOL   ("Enabled",                   taa_enabled,               true)
 TWEAK_BOOL   ("Per-pixel Jitter",          taa_per_pixel_jitter,      false)
 TWEAK_OPTIONS("Neighborhood Mode",         taa_neighborhood_mode,     TaaNeighborhoodMode_VarianceClip, "Off", "Clamp", "Clip", "Variance Clip")
 TWEAK_BOOL   ("Tonemapped Blend",          taa_tonemapped_blend,      true)
@@ -88,14 +95,6 @@ TWEAK_FLOAT  ("Feedback Min",              taa_feedback_min,          0.8,      
 TWEAK_FLOAT  ("Feedback Max",              taa_feedback_max,          0.95,     0,     1)
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END()
-
-
-TWEAK_CATEGORY_BEGIN("Upscaling & Anti-aliasing")
-// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_OPTIONS("Upscaling & AA mode",	   upscaling_aa_mode, 0, "TAA", "AMD FSR 2.2", "Off")
-TWEAK_OPTIONS("Mode",					   amd_fsr2_mode, 0, "Quality", "Balanced", "Performance", "Ultra performance")
-// ------------------------------------------------------------------------------------------------------------------
-TWEAK_CATEGORY_END();
 
 
 TWEAK_CATEGORY_BEGIN("Motion Blur")

@@ -952,7 +952,7 @@ RayDesc GetRayDesc(uint2 dispatch_idx, uint2 dispatch_dim)
 	dispatch_uv.y -= g_global_cb.viewport_offset_y;
 
 	// Apply TAA jitter if TAA is enabled or reference mode is enabled
-	if (tweak.reference_mode || tweak.taa_enabled)
+	if (tweak.reference_mode || tweak.upscaling_aa_mode != 0)
 	{
 		dispatch_uv += GetTAAJitter(dispatch_idx);
 	}

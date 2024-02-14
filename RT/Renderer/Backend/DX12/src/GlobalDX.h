@@ -316,9 +316,15 @@ namespace RT
 
 		CommandQueue* command_queue_direct;
 
+		// The actual output resolution
+		uint32_t output_width;
+		uint32_t output_height;
+
+		// The resolution we render the frame at, might be upscaled to output resolution
 		uint32_t render_width;
 		uint32_t render_height;
 
+		// Override used by cockpit modes
 		uint32_t render_width_override;
 		uint32_t render_height_override;
        
@@ -453,6 +459,9 @@ namespace RT
 		} scene;
 
 		RingBuffer resource_upload_ring_buffer;
+
+		int upscaling_aa_mode;
+		int amd_fsr2_mode;
 	};
 
 	extern D3D12State g_d3d;

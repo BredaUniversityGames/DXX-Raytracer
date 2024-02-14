@@ -54,11 +54,10 @@ float3 ColorPreservingTonemap(float3 color)
 [numthreads(GROUP_X, GROUP_Y, 1)]
 void PostProcessCS(COMPUTE_ARGS)
 {
-	EARLY_OUT
-
 	int2 co = pixel_pos;
+	float2 uv = (float2(co) + 0.5) / float2(g_global_cb.output_dim);
 
-	float2 uv = (float2(co) + 0.5) / float2(g_global_cb.render_dim);
+	int2 co_render = int2(float2(pixel_pos) * (float2(g_global_cb.render_dim) / float2(g_global_cb.output_dim)));
 
 	float3 color = tex_taa_result[co].rgb;
 
@@ -147,60 +146,60 @@ void PostProcessCS(COMPUTE_ARGS)
 	{
 		case RT_DebugRenderMode_Debug:
 		{
-			debug_color = img_debug[co].xyz;
-			debug_blend_factor = img_debug[co].w;
+			debug_color = img_debug[co_render].xyz;
+			debug_blend_factor = img_debug[co_render].w;
 		} break;
 
 		case RT_DebugRenderMode_Normals:
 		{
-			float3 normal = DecodeNormalOctahedron(img_normal[co].xy);
+			float3 normal = DecodeNormalOctahedron(img_normal[co_render].xy);
 			debug_color = 0.5*normal + 0.5;
 		} break;
 
 		case RT_DebugRenderMode_Depth:
 		{
-			float depth = img_depth[co].r;
+			float depth = img_depth[co_render].r;
 			debug_color = depth / 1000.0f; // TODO: Specify depth scale
 		} break;
 
 		case RT_DebugRenderMode_Albedo:
 		{
-			debug_color = img_albedo[co].rgb;
+			debug_color = img_albedo[co_render].rgb;
 		} break;
 
 		case RT_DebugRenderMode_Emissive:
 		{
-			debug_color = img_emissive[co].rgb;
+			debug_color = img_emissive[co_render].rgb;
 		} break;
 
 		case RT_DebugRenderMode_Diffuse:
 		{
-			float3 direct = tweak.svgf_stabilize ? img_diff_stable[co].rgb : img_diff_denoise_ping[co].rgb;
+			float3 direct = tweak.svgf_stabilize ? img_diff_stable[co_render].rgb : img_diff_denoise_ping[co_render].rgb;
 			debug_color = direct.rgb;
 		} break;
 
 		case RT_DebugRenderMode_Specular:
 		{
-			float3 spec = tweak.svgf_stabilize ? img_spec_stable[co].rgb : img_spec_denoise_ping[co].rgb;
+			float3 spec = tweak.svgf_stabilize ? img_spec_stable[co_render].rgb : img_spec_denoise_ping[co_render].rgb;
 			debug_color = spec;
 		} break;
 
 		case RT_DebugRenderMode_Motion:
 		{
-			float4 motion = img_motion[co];
+			float4 motion = img_motion[co_render];
 			debug_color = float3(abs(motion.xy) * 100.0, 0);
 		} break;
 
 		case RT_DebugRenderMode_MetallicRoughness:
 		{
-			float metallic = img_metallic[co].x;
-			float roughness = img_roughness[co].x;
+			float metallic = img_metallic[co_render].x;
+			float roughness = img_roughness[co_render].x;
 			debug_color = float3(metallic, roughness, 0);
 		} break;
 
 		case RT_DebugRenderMode_HistoryLength:
 		{
-			float2 history_length = img_history_length[co];
+			float2 history_length = img_history_length[co_render];
 
 			float2 hist_max = 
 			{
@@ -222,7 +221,7 @@ void PostProcessCS(COMPUTE_ARGS)
 				{ 0, 1, 1 },
 			};
 
-			uint  material_index = img_material[co].x;
+			uint  material_index = img_material[co_render].x;
 			debug_color = colors[material_index % 6];
 
 			if ((material_index / 6) % 2 == 1)
@@ -233,19 +232,19 @@ void PostProcessCS(COMPUTE_ARGS)
 
 		case RT_DebugRenderMode_FirstMoment:
 		{
-			float4 moments = img_moments[co];
+			float4 moments = img_moments[co_render];
 			debug_color = moments.x;
 		} break;
 
 		case RT_DebugRenderMode_SecondMoment:
 		{
-			float4 moments = img_moments[co];
+			float4 moments = img_moments[co_render];
 			debug_color = moments.y;
 		} break;
 
 		case RT_DebugRenderMode_Variance:
 		{
-			float4 moments = img_moments[co];
+			float4 moments = img_moments[co_render];
 			debug_color = sqrt(max(0.001, moments.y - square(moments.x)));
 		} break;
 
@@ -291,5 +290,5 @@ void PostProcessCS(COMPUTE_ARGS)
 	}
 
 	float3 final_color = lerp(color, debug_color, debug_blend_factor);
-	img_color[co] = float4(final_color, 1.0);
+	img_color_final[co] = float4(final_color, 1.0);
 }

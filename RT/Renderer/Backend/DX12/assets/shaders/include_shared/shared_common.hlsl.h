@@ -75,20 +75,22 @@ struct GlobalConstantBuffer
 	float4x4 prev_proj_inv;
 
 	float2   taa_jitter;
+	int2	 output_dim;
 
 	int2     render_dim;
 	uint     frame_index;
 	uint     debug_flags;
-	uint     debug_render_mode;
-	uint     lights_count;
 
 	// Color overlay for being shot at or picking up items.
 	float4	 screen_color_overlay;
 
-    // Viewport offset, effectively offsets the center of the viewport after projecting
-    float    viewport_offset_y;
-    float3   sky_color_top;
-    float3   sky_color_bottom;
+	uint     debug_render_mode;
+	float3   sky_color_top;
+	float3   sky_color_bottom;
+	uint     lights_count;
+
+	// Viewport offset, effectively offsets the center of the viewport after projecting
+	float    viewport_offset_y;
 };
 
 struct GenMipMapSettings
@@ -113,14 +115,12 @@ struct PixelDebugData
 // ------------------------------------------------------------------
 // Tweak-vars: Struct generation
 
-#ifdef __cplusplus
 enum UpscalingAAMode
 {
+	UPSCALING_AA_MODE_OFF,
 	UPSCALING_AA_MODE_TAA,
-	UPSCALING_AA_MODE_AMD_FSR_2_2,
-	UPSCALING_AA_MODE_OFF
+	UPSCALING_AA_MODE_AMD_FSR_2_2
 };
-#endif
 
 #define TWEAK_CATEGORY_BEGIN(name)
 #define TWEAK_CATEGORY_END()

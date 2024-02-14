@@ -1852,14 +1852,37 @@ namespace
 
     void CreateIntermediateRendertargets()
     {
-		auto CreateRenderTarget = [](const wchar_t *name, int scale_x, int scale_y, DXGI_FORMAT format, ID3D12Resource **result)
+		auto CreateRenderTarget = [](const wchar_t *name, int reg, int scale_x, int scale_y, DXGI_FORMAT format, ID3D12Resource **result)
 		{
+			uint32_t width = (g_d3d.render_width + scale_x - 1) / scale_x;
+			uint32_t height = (g_d3d.render_height + scale_y - 1) / scale_y;
+
+			if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2 &&
+				(reg == RenderTarget_taa_result ||
+				reg == RenderTarget_taa_history ||
+				reg == RenderTarget_scene ||
+				reg == RenderTarget_color_final ||
+				reg == RenderTarget_bloom_pong ||
+				reg == RenderTarget_bloom_prepass ||
+				reg == RenderTarget_bloom0 ||
+				reg == RenderTarget_bloom1 ||
+				reg == RenderTarget_bloom2 ||
+				reg == RenderTarget_bloom3 ||
+				reg == RenderTarget_bloom4 ||
+				reg == RenderTarget_bloom5 ||
+				reg == RenderTarget_bloom6 ||
+				reg == RenderTarget_bloom7))
+			{
+				width = (g_d3d.output_width + scale_x - 1) / scale_x;
+				height = (g_d3d.output_height + scale_y - 1) / scale_y;
+			}
+
 			(*result) = RT_CreateTexture(name, format, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
-				, (g_d3d.render_width + scale_x - 1) / scale_x, (g_d3d.render_height + scale_y - 1) / scale_y, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				, width, height, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		};
 
 #define RT_CREATE_RENDER_TARGETS(name, reg, scale_x, scale_y, type, format) \
-		CreateRenderTarget(RT_PASTE(L, #name), scale_x, scale_y, format, &g_d3d.render_targets[RT_PASTE(RenderTarget_, name)]); \
+		CreateRenderTarget(RT_PASTE(L, #name), reg, scale_x, scale_y, format, &g_d3d.render_targets[RT_PASTE(RenderTarget_, name)]); \
 		g_d3d.render_target_formats[RT_PASTE(RenderTarget_, name)] = format;
 
 		RT_RENDER_TARGETS(RT_CREATE_RENDER_TARGETS)
@@ -2216,12 +2239,6 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 	g_d3d.hWnd = reinterpret_cast<HWND>(render_init_params->window_handle);
 	g_d3d.arena = render_init_params->arena;
 
-	RECT client_rect;
-	GetClientRect(g_d3d.hWnd, &client_rect);
-
-	g_d3d.render_width  = client_rect.right - client_rect.left;
-	g_d3d.render_height = client_rect.bottom - client_rect.top;
-
 	for (int i = 0; i < HALTON_SAMPLE_COUNT; i++)
 	{
 		g_d3d.halton_samples[i].x = Halton(i, 2) - 0.5f;
@@ -2231,6 +2248,25 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 	g_d3d.mesh_tracker.Init(g_d3d.arena);
 
 	InitTweakVars();
+	// These two are needed to track the current upscaling aa mode as well as the fsr2 mode
+	// So that we can detect if it changes, and resize the required render targets accordingly
+	g_d3d.upscaling_aa_mode = tweak_vars.upscaling_aa_mode;
+	g_d3d.amd_fsr2_mode = tweak_vars.amd_fsr2_mode;
+
+	RECT client_rect;
+	GetClientRect(g_d3d.hWnd, &client_rect);
+
+	g_d3d.output_width = client_rect.right - client_rect.left;
+	g_d3d.output_height = client_rect.bottom - client_rect.top;
+	if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+	{
+		FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
+	}
+	else
+	{
+		g_d3d.render_width = g_d3d.output_width;
+		g_d3d.render_height = g_d3d.output_height;
+	}
 
     EnableDebugLayer();
     CreateDevice();
@@ -2834,8 +2870,15 @@ void RenderBackend::BeginFrame()
 
 void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 {
-	g_d3d.render_width_override = scene_settings->render_width_override;
-	g_d3d.render_height_override = scene_settings->render_height_override;
+	if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+	{
+		FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width_override, g_d3d.render_height_override);
+	}
+	else
+	{
+		g_d3d.render_width_override = scene_settings->render_width_override;
+		g_d3d.render_height_override = scene_settings->render_height_override;
+	}
 
 	if (!RT_Vec3AreEqual(scene_settings->camera->position, g_d3d.scene.camera.position, 0.001f) ||
 		!RT_Vec3AreEqual(scene_settings->camera->forward, g_d3d.scene.camera.forward, 0.001f) ||
@@ -2875,6 +2918,28 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 void RenderBackend::EndScene()
 {
 	UpdateTweakvarsFromIOConfig();
+
+	// Check if the fsr2 mode changed, if so, we need to adjust some of our render targets to match the output resolution
+	if (tweak_vars.upscaling_aa_mode != g_d3d.upscaling_aa_mode ||
+		tweak_vars.amd_fsr2_mode != g_d3d.amd_fsr2_mode)
+	{
+		g_d3d.upscaling_aa_mode = tweak_vars.upscaling_aa_mode;
+		g_d3d.amd_fsr2_mode = tweak_vars.amd_fsr2_mode;
+
+		Flush();
+
+		if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+		{
+			FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
+		}
+		else
+		{
+			g_d3d.render_width = g_d3d.output_width;
+			g_d3d.render_height = g_d3d.output_height;
+		}
+
+		ResizeResolutionDependentResources();
+	}
 
 	if (!g_d3d.scene.freezeframe)
 	{
@@ -2928,6 +2993,7 @@ void RenderBackend::EndScene()
 			scene_cb->prev_proj_inv = prev_scene_cb->proj_inv;
 
 			scene_cb->taa_jitter = g_d3d.halton_samples[g_d3d.frame_index % HALTON_SAMPLE_COUNT];
+			scene_cb->output_dim = RT_Vec2iMake(g_d3d.output_width, g_d3d.output_height);
 			scene_cb->render_dim = RT_Vec2iMake(g_d3d.render_width, g_d3d.render_height);
 			scene_cb->frame_index = (uint32_t)g_d3d.accum_frame_index;
 			scene_cb->debug_flags = debug_flags;
@@ -3108,8 +3174,8 @@ void RenderBackend::SwapBuffers()
 	RECT client_rect;
 	GetClientRect(g_d3d.hWnd, &client_rect);
 
-	if ((int)g_d3d.render_width  != client_rect.right ||
-		(int)g_d3d.render_height != client_rect.bottom)
+	if ((int)g_d3d.output_width  != client_rect.right ||
+		(int)g_d3d.output_height != client_rect.bottom)
 	{
 		OnWindowResize(client_rect.right, client_rect.bottom);
 	}
@@ -3122,8 +3188,21 @@ void RenderBackend::OnWindowResize(uint32_t width, uint32_t height)
 	width = std::max(width, 1u);
 	height = std::max(height, 1u);
 
-	g_d3d.render_width = width;
-	g_d3d.render_height = height;
+	g_d3d.output_width = g_d3d.render_width = width;
+	g_d3d.output_height = g_d3d.render_height = height;
+
+	if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+	{
+		FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
+		FSR2::OnWindowResize(g_d3d.output_width, g_d3d.output_height);
+	}
+	else
+	{
+		g_d3d.render_width = width;
+		g_d3d.render_height = height;
+	}
+
+	printf("Output res: %ux%u | Render res: %ux%u\n", g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
 	
 	for (size_t i = 0; i < BACK_BUFFER_COUNT; ++i)
 	{
@@ -3133,7 +3212,7 @@ void RenderBackend::OnWindowResize(uint32_t width, uint32_t height)
 
 	DXGI_SWAP_CHAIN_DESC swap_chain_desc = {};
 	DX_CALL(g_d3d.dxgi_swapchain4->GetDesc(&swap_chain_desc));
-	DX_CALL(g_d3d.dxgi_swapchain4->ResizeBuffers(BACK_BUFFER_COUNT, g_d3d.render_width, g_d3d.render_height,
+	DX_CALL(g_d3d.dxgi_swapchain4->ResizeBuffers(BACK_BUFFER_COUNT, g_d3d.output_width, g_d3d.output_height,
 		swap_chain_desc.BufferDesc.Format, swap_chain_desc.Flags));
 
 	for (UINT i = 0; i < BACK_BUFFER_COUNT; ++i)
@@ -4139,7 +4218,7 @@ void RenderBackend::RaytraceRender()
 			command_list->Dispatch(dispatch_w, dispatch_h, 1);
 			ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-			UAVBarrier(command_list, g_d3d.rt.taa_result);
+			UAVBarrier(command_list, g_d3d.render_targets[rt_taa_result[a]]);
 		}
 		else if (tweak_vars.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
 		{
@@ -4158,7 +4237,7 @@ void RenderBackend::RaytraceRender()
 				g_d3d.scene.camera.near_plane, g_d3d.scene.camera.far_plane, g_d3d.scene.camera.vfov,
 				16.6f /* TODO: Pass in actual delta time */, g_d3d.io.scene_transition
 			);
-
+			
 			D3D12_RESOURCE_BARRIER fsr2_after_barriers[] = {
 				GetTransitionBarrier(g_d3d.rt.color, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 				GetTransitionBarrier(g_d3d.rt.depth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
@@ -4184,10 +4263,13 @@ void RenderBackend::RaytraceRender()
 	// ------------------------------------------------------------------
 	// Do bloom
 
+	uint32_t output_dispatch_w = RT_MAX((g_d3d.output_width + GROUP_X - 1) / GROUP_X, 1);
+	uint32_t output_dispatch_h = RT_MAX((g_d3d.output_height + GROUP_Y - 1) / GROUP_Y, 1);
+
 	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_Bloom);
 
 	command_list->SetPipelineState(g_d3d.cs.bloom_prepass.pso);
-	command_list->Dispatch(dispatch_w / 2, dispatch_h / 2, 1);
+	command_list->Dispatch(output_dispatch_w / 2, output_dispatch_h / 2, 1);
 
 	UAVBarrier(command_list, g_d3d.rt.bloom_prepass);
 
@@ -4210,10 +4292,10 @@ void RenderBackend::RaytraceRender()
 		int scale1 = 1 << (i + 1);
 		int scale2 = 1 << (i + 2);
 
-		int h1 = RT_MAX((g_d3d.render_height / scale1 + GROUP_Y - 1) / GROUP_Y, 1);
+		int h1 = RT_MAX((g_d3d.output_height / scale1 + GROUP_Y - 1) / GROUP_Y, 1);
 
-		int w2 = RT_MAX((g_d3d.render_width / scale2 + GROUP_X - 1) / GROUP_X, 1);
-		int h2 = RT_MAX((g_d3d.render_height / scale2 + GROUP_Y - 1) / GROUP_Y, 1);
+		int w2 = RT_MAX((g_d3d.output_width / scale2 + GROUP_X - 1) / GROUP_X, 1);
+		int h2 = RT_MAX((g_d3d.output_height / scale2 + GROUP_Y - 1) / GROUP_Y, 1);
 
 		command_list->SetPipelineState(g_d3d.cs.bloom_blur_horz.pso);
 		command_list->Dispatch(w2, h1, 1);
@@ -4230,18 +4312,20 @@ void RenderBackend::RaytraceRender()
 
 	// ------------------------------------------------------------------
 	// Do tonemapping / gamma correction / other post processing effects
-	
+
 	UAVBarrier(command_list, g_d3d.rt.debug);
 	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_PostProcess);
 
 	ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[a]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	ResourceTransitions(command_list, RT_ARRAY_COUNT(bloom_render_targets), bloom_render_targets, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
 	command_list->SetPipelineState(g_d3d.cs.post_process.pso);
-	command_list->Dispatch(dispatch_w, dispatch_h, 1);
+	command_list->Dispatch(output_dispatch_w, output_dispatch_h, 1);
+
 	ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[a]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	ResourceTransitions(command_list, RT_ARRAY_COUNT(bloom_render_targets), bloom_render_targets, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-	UAVBarrier(command_list, g_d3d.rt.color);
+	UAVBarrier(command_list, g_d3d.rt.color_final);
 	GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_PostProcess);
 
 	// ------------------------------------------------------------------
@@ -4249,7 +4333,7 @@ void RenderBackend::RaytraceRender()
 	// TODO(daniel): Put this in post_process.hlsl
 
 	command_list->SetPipelineState(g_d3d.cs.resolve_final_color.pso);
-	command_list->Dispatch(dispatch_w, dispatch_h, 1);
+	command_list->Dispatch(output_dispatch_w, output_dispatch_h, 1);
 
 	UAVBarrier(command_list, g_d3d.rt.scene);
 

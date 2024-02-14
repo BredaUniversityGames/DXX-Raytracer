@@ -60,4 +60,4 @@
 	_(scene,							  50,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
 	_(color_reference,                    51,     1,     1,     float4, DXGI_FORMAT_R32G32B32A32_FLOAT) \
 	_(color_final,                        52,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
-	_(debug,							  52,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM)
+	_(debug,							  53,     1,     1,     float4, DXGI_FORMAT_R8G8B8A8_UNORM)

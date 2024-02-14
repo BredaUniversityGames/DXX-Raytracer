@@ -1387,15 +1387,16 @@ void raytrace_config()
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Upscaling & Anti-aliasing:"; nitems++;
 	opt_gr_upscaling_aa_mode = nitems;
 
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Off"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " TAA"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " AMD FSR 2.2"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
-	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Off"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
 	int upscaling_aa_mode = RT_GetIntFromConfig(config, RT_StringLiteral("upscaling_aa_mode"));
 	m[opt_gr_upscaling_aa_mode + upscaling_aa_mode].value = 1;
 
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "AMD FSR mode:"; nitems++;
 	opt_gr_amd_fsr2_mode = nitems;
 
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " No Upscaling"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Quality"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Balanced"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
 	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Performance"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
