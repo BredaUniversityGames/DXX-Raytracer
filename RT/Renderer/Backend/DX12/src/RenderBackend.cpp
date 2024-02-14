@@ -2906,28 +2906,6 @@ void RenderBackend::EndScene()
 {
 	UpdateTweakvarsFromIOConfig();
 
-	// Check if the fsr2 mode changed, if so, we need to adjust some of our render targets to match the output resolution
-	if (tweak_vars.upscaling_aa_mode != g_d3d.upscaling_aa_mode ||
-		tweak_vars.amd_fsr2_mode != g_d3d.amd_fsr2_mode)
-	{
-		g_d3d.upscaling_aa_mode = tweak_vars.upscaling_aa_mode;
-		g_d3d.amd_fsr2_mode = tweak_vars.amd_fsr2_mode;
-
-		Flush();
-
-		if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
-		{
-			FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
-		}
-		else
-		{
-			g_d3d.render_width = g_d3d.output_width;
-			g_d3d.render_height = g_d3d.output_height;
-		}
-
-		ResizeResolutionDependentResources();
-	}
-
 	if (!g_d3d.scene.freezeframe)
 	{
 		// ------------------------------------------------------------------
@@ -3165,6 +3143,28 @@ void RenderBackend::SwapBuffers()
 		(int)g_d3d.output_height != client_rect.bottom)
 	{
 		OnWindowResize(client_rect.right, client_rect.bottom);
+	}
+
+	// Check if the fsr2 mode changed, if so, we need to adjust some of our render targets to match the output resolution
+	if (tweak_vars.upscaling_aa_mode != g_d3d.upscaling_aa_mode ||
+		tweak_vars.amd_fsr2_mode != g_d3d.amd_fsr2_mode)
+	{
+		g_d3d.upscaling_aa_mode = tweak_vars.upscaling_aa_mode;
+		g_d3d.amd_fsr2_mode = tweak_vars.amd_fsr2_mode;
+
+		Flush();
+
+		if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+		{
+			FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
+		}
+		else
+		{
+			g_d3d.render_width = g_d3d.output_width;
+			g_d3d.render_height = g_d3d.output_height;
+		}
+
+		ResizeResolutionDependentResources();
 	}
 }
 
@@ -4194,9 +4194,9 @@ void RenderBackend::RaytraceRender()
 
 	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_TAA);
 
-	if (!tweak_vars.reference_mode && tweak_vars.upscaling_aa_mode != UPSCALING_AA_MODE_OFF)
+	if (!tweak_vars.reference_mode && g_d3d.upscaling_aa_mode != UPSCALING_AA_MODE_OFF)
 	{
-		if (tweak_vars.upscaling_aa_mode == UPSCALING_AA_MODE_TAA)
+		if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_TAA)
 		{
 			ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
@@ -4206,7 +4206,7 @@ void RenderBackend::RaytraceRender()
 
 			UAVBarrier(command_list, g_d3d.render_targets[rt_taa_result[a]]);
 		}
-		else if (tweak_vars.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+		else if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
 		{
 			D3D12_RESOURCE_BARRIER fsr2_before_barriers[] = {
 				GetTransitionBarrier(g_d3d.rt.color, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
