@@ -90,6 +90,14 @@ TWEAK_FLOAT  ("Feedback Max",              taa_feedback_max,          0.95,     
 TWEAK_CATEGORY_END()
 
 
+TWEAK_CATEGORY_BEGIN("Upscaling & Anti-aliasing")
+// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
+TWEAK_OPTIONS("Upscaling & AA mode",	   upscaling_aa_mode, 0, "TAA", "AMD FSR 2.2", "Off")
+TWEAK_OPTIONS("Mode",					   amd_fsr2_mode, 0, "Quality", "Balanced", "Performance", "Ultra performance")
+// ------------------------------------------------------------------------------------------------------------------
+TWEAK_CATEGORY_END();
+
+
 TWEAK_CATEGORY_BEGIN("Motion Blur")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
 TWEAK_INT    ("Quality",                   motion_blur_quality,       1,        0,    4)

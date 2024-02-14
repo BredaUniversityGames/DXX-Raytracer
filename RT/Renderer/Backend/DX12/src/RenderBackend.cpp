@@ -5,6 +5,7 @@
 #include "GPUProfiler.h"
 #include "Resource.h"
 #include "ImageReadWrite.h"
+#include "FSR2.h"
 
 #include "Core/MiniMath.h"
 #include "Core/MemoryScope.hpp"
@@ -12,8 +13,8 @@
 // ------------------------------------------------------------------
 // Dear ImGui backend
 
-#include <backends/imgui_impl_win32.h>
-#include <backends/imgui_impl_dx12.h>
+#include "backends/imgui_impl_win32.h"
+#include "backends/imgui_impl_dx12.h"
 
 // ------------------------------------------------------------------
 
@@ -2240,6 +2241,8 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 	CreateCommandQueues();
 	CreateSwapChain(g_d3d.hWnd);
 
+	FSR2::Init();
+
     CreateDxcCompilerState();
 	InitializeFrameResources();
 
@@ -2537,6 +2540,8 @@ void RenderBackend::Exit()
 
 	GPUProfiler::Exit();
 
+	FSR2::Exit();
+
 	//------------------------------------------------------------------------
 	// Release any textures created with CreateTexture, any buffers created
 	// with any of the CreateBuffer variants, and every other resource that
@@ -2552,6 +2557,7 @@ void RenderBackend::Exit()
 	SafeRelease(g_d3d.query_heap);
 
 	delete g_d3d.command_queue_direct;
+
 	SafeRelease(g_d3d.dxgi_swapchain4);
 	SafeRelease(g_d3d.device);
 	SafeRelease(g_d3d.dxgi_adapter4);
@@ -2857,6 +2863,8 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 		g_d3d.scene.camera.forward = RT_Vec3Normalize(g_d3d.scene.camera.forward);
 		g_d3d.scene.camera.right = RT_Vec3Normalize(g_d3d.scene.camera.right);
 		g_d3d.scene.camera.up = RT_Vec3Normalize(g_d3d.scene.camera.up);
+		g_d3d.scene.camera.near_plane = 0.001f;
+		g_d3d.scene.camera.far_plane = 10000.0f;
 		g_d3d.tlas_instance_count = 0;
 		g_d3d.lights_count = 0;
 	}
@@ -2891,7 +2899,7 @@ void RenderBackend::EndScene()
 				XMMATRIX xm_view_inv = XMMatrixInverse(nullptr, xm_view);
 
 				float aspect_ratio = (float)g_d3d.render_width / (float)g_d3d.render_height;
-				XMMATRIX xm_proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(camera->vfov), aspect_ratio, 0.001f, 10000.0f);
+				XMMATRIX xm_proj = XMMatrixPerspectiveFovLH(XMConvertToRadians(camera->vfov), aspect_ratio, camera->near_plane, camera->far_plane);
 				XMMATRIX xm_proj_inv = XMMatrixInverse(nullptr, xm_proj);
 
 				// Silly thing to do, but who cares
@@ -4117,19 +4125,54 @@ void RenderBackend::RaytraceRender()
 	GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_Composite);
 
 	// ------------------------------------------------------------------
-	// Do TAA 
+	// Temporal anti-aliasing (if enabled), AMD FSR 2.2 (if enabled)
 
 	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_TAA);
 
-	if (tweak_vars.taa_enabled && !tweak_vars.reference_mode)
+	if (!tweak_vars.reference_mode && tweak_vars.upscaling_aa_mode != UPSCALING_AA_MODE_OFF)
 	{
-		ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		if (tweak_vars.upscaling_aa_mode == UPSCALING_AA_MODE_TAA)
+		{
+			ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
-		command_list->SetPipelineState(g_d3d.cs.taa.pso);
-		command_list->Dispatch(dispatch_w, dispatch_h, 1);
-		ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			command_list->SetPipelineState(g_d3d.cs.taa.pso);
+			command_list->Dispatch(dispatch_w, dispatch_h, 1);
+			ResourceTransition(command_list, g_d3d.render_targets[rt_taa_result[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-		UAVBarrier(command_list, g_d3d.rt.taa_result);
+			UAVBarrier(command_list, g_d3d.rt.taa_result);
+		}
+		else if (tweak_vars.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+		{
+			D3D12_RESOURCE_BARRIER fsr2_before_barriers[] = {
+				GetTransitionBarrier(g_d3d.rt.color, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				GetTransitionBarrier(g_d3d.rt.depth, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				GetTransitionBarrier(g_d3d.rt.motion, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE),
+				GetTransitionBarrier(g_d3d.render_targets[rt_taa_result[a]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)
+			};
+			command_list->ResourceBarrier(RT_ARRAY_COUNT(fsr2_before_barriers), fsr2_before_barriers);
+
+			GlobalConstantBuffer* scene_cb = frame->scene_cb.As<GlobalConstantBuffer>();
+			FSR2::Dispatch(command_list,
+				g_d3d.rt.color, g_d3d.rt.depth, g_d3d.rt.motion, g_d3d.render_targets[rt_taa_result[a]],
+				g_d3d.render_width, g_d3d.render_height, scene_cb->taa_jitter.x, scene_cb->taa_jitter.y,
+				g_d3d.scene.camera.near_plane, g_d3d.scene.camera.far_plane, g_d3d.scene.camera.vfov,
+				16.6f /* TODO: Pass in actual delta time */, g_d3d.io.scene_transition
+			);
+
+			D3D12_RESOURCE_BARRIER fsr2_after_barriers[] = {
+				GetTransitionBarrier(g_d3d.rt.color, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				GetTransitionBarrier(g_d3d.rt.depth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				GetTransitionBarrier(g_d3d.rt.motion, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+			};
+			command_list->ResourceBarrier(RT_ARRAY_COUNT(fsr2_after_barriers), fsr2_after_barriers);
+
+			// Set the descriptor heap, root sig and root descriptor tables again, since FSR2 will set its own
+			command_list->SetDescriptorHeaps(1, heaps);
+			command_list->SetComputeRootSignature(g_d3d.global_root_sig);
+			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_MainDescriptorTable, frame->descriptors.gpu);
+			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessSRVTable, g_d3d.cbv_srv_uav.GetGPUBase());
+			command_list->SetComputeRootDescriptorTable(RaytraceRootParameters_BindlessTriangleBufferTable, g_d3d.cbv_srv_uav.GetGPUBase());
+		}
 	}
 	else
 	{
@@ -4465,10 +4508,10 @@ void RenderBackend::RasterRenderDebugLines()
 	XMVECTOR dir = XMVectorSet(g_d3d.scene.camera.forward.x, g_d3d.scene.camera.forward.y, g_d3d.scene.camera.forward.z, 0);
 
 	float aspect_ratio = viewport.Width / viewport.Height;
-	float far_plane = 10000.0f;
-	XMMATRIX xm_matrix = XMMatrixTranspose(XMMatrixMultiply(XMMatrixLookToLH(pos, dir, up), XMMatrixPerspectiveFovLH(XMConvertToRadians(g_d3d.scene.camera.vfov), aspect_ratio, 0.001f, far_plane)));
+	XMMATRIX xm_matrix = XMMatrixTranspose(XMMatrixMultiply(XMMatrixLookToLH(pos, dir, up),
+		XMMatrixPerspectiveFovLH(XMConvertToRadians(g_d3d.scene.camera.vfov),aspect_ratio, g_d3d.scene.camera.near_plane, g_d3d.scene.camera.far_plane)));
 	command_list->SetGraphicsRoot32BitConstants(0, 16, &xm_matrix, 0);
-	command_list->SetGraphicsRoot32BitConstants(1, 1, &far_plane, 0);
+	command_list->SetGraphicsRoot32BitConstants(1, 1, &g_d3d.scene.camera.far_plane, 0);
 	command_list->DrawInstanced((UINT)(g_d3d_raster.debug_line_count * 2), 1, 0, 0);
 
 	g_d3d_raster.debug_line_at += g_d3d_raster.debug_line_count;

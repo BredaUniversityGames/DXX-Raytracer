@@ -113,6 +113,15 @@ struct PixelDebugData
 // ------------------------------------------------------------------
 // Tweak-vars: Struct generation
 
+#ifdef __cplusplus
+enum UpscalingAAMode
+{
+	UPSCALING_AA_MODE_TAA,
+	UPSCALING_AA_MODE_AMD_FSR_2_2,
+	UPSCALING_AA_MODE_OFF
+};
+#endif
+
 #define TWEAK_CATEGORY_BEGIN(name)
 #define TWEAK_CATEGORY_END()
 #define TWEAK_BOOL(name, var, value) int var;
