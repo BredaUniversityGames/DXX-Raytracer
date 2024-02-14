@@ -67,7 +67,7 @@ void PostProcessCS(COMPUTE_ARGS)
 	{
 		// TODO(daniel): Think about per-object motion blur extending out from the object silhouette
 
-		float2 motion = img_motion[co].xy;
+		float2 motion = img_motion[co_render].xy;
 		float  jitter = RandomSample(co, Random_MotionBlur);
 
 		uint sample_count = (1U << (tweak.motion_blur_quality + 1));
