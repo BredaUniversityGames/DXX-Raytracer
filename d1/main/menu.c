@@ -1671,8 +1671,8 @@ void graphics_config()
 
 	if(PlayerCfg.maxFps < 25) {
 		PlayerCfg.maxFps = 25;
-	} else if (PlayerCfg.maxFps > 200) {
-		PlayerCfg.maxFps = 200; 
+	} else if (PlayerCfg.maxFps > 999) {
+		PlayerCfg.maxFps = 999; 
 	}
 
 #ifdef OGL

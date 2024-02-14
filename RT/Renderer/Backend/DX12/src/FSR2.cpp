@@ -106,8 +106,8 @@ void FSR2::Dispatch(ID3D12CommandList* command_list, ID3D12Resource* rt_color, I
 	dispatch_desc.output = ffxGetResourceDX12(&data.context, rt_output);
 	// Jitter offsets can be calculated using ffxFsr2GetJitterPhaseCount and ffxFsr2GetJitterOffset
 	// However we can also supply our own, which we already have implemented, so we will use our own halton sequence
-	dispatch_desc.jitterOffset.x = camera_jitter_x;
-	dispatch_desc.jitterOffset.y = camera_jitter_y;
+	dispatch_desc.jitterOffset.x = camera_jitter_x / (float)render_width;
+	dispatch_desc.jitterOffset.y = camera_jitter_y / (float)render_height;
 	dispatch_desc.motionVectorScale.x = (float)render_width;
 	dispatch_desc.motionVectorScale.y = (float)render_height;
 	// Used to reset the temporal accumulation in case of jump cuts
