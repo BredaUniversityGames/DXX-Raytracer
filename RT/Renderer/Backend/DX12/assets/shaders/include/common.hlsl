@@ -347,20 +347,13 @@ float RandomSample(uint2 xy, uint id)
 {
 	float result = 0;
 
-	if (tweak.reference_mode && g_global_cb.frame_index >= BLUE_NOISE_TEX_COUNT)
-	{
-		result = IntegerHash(uint3(xy, g_global_cb.frame_index + id)).x;
-	}
-	else
-	{
-		uint cycle = g_global_cb.frame_index / BLUE_NOISE_TEX_COUNT;
+	uint cycle = g_global_cb.frame_index / BLUE_NOISE_TEX_COUNT;
 
-		uint texture_index  = ((g_global_cb.frame_index + id) / 4) % BLUE_NOISE_TEX_COUNT;
-		uint texture_offset = ((g_global_cb.frame_index + id) % 4);
+	uint texture_index  = ((g_global_cb.frame_index + id) / 4) % BLUE_NOISE_TEX_COUNT;
+	uint texture_offset = ((g_global_cb.frame_index + id) % 4);
 
-		float4 s = g_blue_noise[NonUniformResourceIndex(texture_index)].Load(uint3((xy + 13*cycle) % 64, 0));
-		result = s[texture_offset];
-	}
+	float4 s = g_blue_noise[NonUniformResourceIndex(texture_index)].Load(uint3((xy + 13*cycle) % 64, 0));
+	result = s[texture_offset];
 
 	return result;
 }
@@ -951,8 +944,8 @@ RayDesc GetRayDesc(uint2 dispatch_idx, uint2 dispatch_dim)
 	dispatch_uv.y = 1.0f - dispatch_uv.y;
 	dispatch_uv.y -= g_global_cb.viewport_offset_y;
 
-	// Apply TAA jitter if TAA is enabled or reference mode is enabled
-	if (tweak.reference_mode || tweak.upscaling_aa_mode != 0)
+	// Apply TAA jitter if TAA is enabled
+	if (tweak.upscaling_aa_mode != 0)
 	{
 		dispatch_uv += GetTAAJitter(dispatch_idx);
 	}

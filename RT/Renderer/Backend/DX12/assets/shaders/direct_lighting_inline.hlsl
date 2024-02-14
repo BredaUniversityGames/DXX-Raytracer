@@ -36,7 +36,7 @@ void DirectLightingInline(COMPUTE_ARGS)
 	DirectLightingOutput direct_lighting_output = (DirectLightingOutput)0;
 	CalculateDirectLightingAtSurface(geo, direct_lighting_output, pixel_pos, false);
 
-	if (!tweak.reference_mode && tweak.svgf_enabled)
+	if (tweak.svgf_enabled)
 	{
 		direct_lighting_output.direct_specular *= rcp(lerp(0.04, 0.01 + direct_lighting_output.albedo, geo.metallic));
 	}

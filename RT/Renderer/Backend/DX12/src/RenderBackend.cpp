@@ -2732,17 +2732,9 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 				g_d3d.accum_frame_index = 0;
 			}
 
-			if (tweak_vars.reference_mode)
-			{
-				ImGui::Text("Accumulated Frames: %llu", g_d3d.accum_frame_index);
-			}
-			else
-			{
-				ImGui::Text("Frame Index: %llu", g_d3d.accum_frame_index);
-			}
+			ImGui::Text("Frame Index: %llu", g_d3d.accum_frame_index);
 
 			int current_render_mode = g_d3d.io.debug_render_mode;
-			int current_reference_mode = tweak_vars.reference_mode;
 
 			char *render_modes[] = { 
 				"Default", 
@@ -2818,11 +2810,6 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 
 			WriteTweakvarsToIOConfig();
 
-			if (tweak_vars.reference_mode != current_reference_mode)
-			{
-				g_d3d.accum_frame_index = 0;
-			}
-
 			// NOTE(daniel): This is a bit half-baked because I just wanted to try the early out thing.
 			if (ImGui::CollapsingHeader("Compile Time Shader Settings"))
 			{
@@ -2876,11 +2863,6 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 
 	g_d3d.scene.freezeframe = false;
 	g_d3d.scene.render_blit = scene_settings->render_blit;
-
-	if (tweak_vars.reference_mode)
-	{
-		g_d3d.scene.freezeframe = true;
-	}
 
 	g_d3d.scene.freezeframe |= tweak_vars.freezeframe;
 	g_d3d.scene.prev_camera = g_d3d.scene.camera;
@@ -3607,14 +3589,12 @@ void RenderBackend::RaytraceRender()
 	// ------------------------------------------------------------------
 	// Copy this frame's dynamic material state:
 
-	if (!tweak_vars.reference_mode)
-	{
-		memcpy(frame->material_edges.cpu, g_rt_material_edges, sizeof(RT_MaterialEdge) * RT_MAX_MATERIAL_EDGES);
-		memcpy(frame->material_indices.cpu, g_rt_material_indices, sizeof(uint16_t) * RT_MAX_MATERIALS);
+	memcpy(frame->material_edges.cpu, g_rt_material_edges, sizeof(RT_MaterialEdge) * RT_MAX_MATERIAL_EDGES);
+	memcpy(frame->material_indices.cpu, g_rt_material_indices, sizeof(uint16_t) * RT_MAX_MATERIALS);
 
-		CopyBufferRegion(command_list, g_d3d.material_edges, 0, frame->material_edges.buffer, frame->material_edges.offset, frame->material_edges.size);
-		CopyBufferRegion(command_list, g_d3d.material_indices, 0, frame->material_indices.buffer, frame->material_indices.offset, frame->material_indices.size);
-	}
+	CopyBufferRegion(command_list, g_d3d.material_edges, 0, frame->material_edges.buffer, frame->material_edges.offset, frame->material_edges.size);
+	CopyBufferRegion(command_list, g_d3d.material_indices, 0, frame->material_indices.buffer, frame->material_indices.offset, frame->material_indices.size);
+	
 
 	// ------------------------------------------------------------------
 	// Create unordered access views for render targets
@@ -4058,10 +4038,9 @@ void RenderBackend::RaytraceRender()
 	// ------------------------------------------------------------------
 	// Denoise
 
-	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseResample);
-
-	if (!tweak_vars.reference_mode)
 	{
+		GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseResample);
+
 		command_list->SetPipelineState(g_d3d.cs.svgf_resample.pso);
 		command_list->Dispatch(dispatch_w, dispatch_h, 1);
 
@@ -4071,112 +4050,108 @@ void RenderBackend::RaytraceRender()
 			g_d3d.rt.moments, g_d3d.rt.history_length
 		};
 		UAVBarriers(command_list, RT_ARRAY_COUNT(uav_render_targets), uav_render_targets);
-	}
-	else
-	{
-		CopyResource(command_list, g_d3d.rt.diff_denoise_ping, g_d3d.rt.diff);
-		CopyResource(command_list, g_d3d.rt.spec_denoise_ping, g_d3d.rt.spec);
-	}
 
-	GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseResample);
+		GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseResample);
 
-	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseSVGF);
+		GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseSVGF);
 
-	bool denoise_direct = tweak_vars.svgf_enabled && !tweak_vars.reference_mode;
-	if (denoise_direct)
-	{
-		for (UINT i = 0; i < 5; i++)
+		if (tweak_vars.svgf_enabled)
 		{
-			command_list->SetComputeRoot32BitConstant(RaytraceRootParameters_DenoiseIteration, i, 0);
-			command_list->SetPipelineState(g_d3d.cs.svgf_blur.pso);
-			command_list->Dispatch(dispatch_w, dispatch_h, 1);
+			for (UINT i = 0; i < 5; i++)
+			{
+				command_list->SetComputeRoot32BitConstant(RaytraceRootParameters_DenoiseIteration, i, 0);
+				command_list->SetPipelineState(g_d3d.cs.svgf_blur.pso);
+				command_list->Dispatch(dispatch_w, dispatch_h, 1);
 
-			switch (i)
-			{
-			case 0:
-			{
-				ID3D12Resource* resources[] =
+				switch (i)
 				{
-					g_d3d.rt.diff_denoise_pong,
-					g_d3d.rt.spec_denoise_pong,
-					g_d3d.rt.moments_hist,
-				};
-				UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
-			} break;
+				case 0:
+				{
+					ID3D12Resource* resources[] =
+					{
+						g_d3d.rt.diff_denoise_pong,
+						g_d3d.rt.spec_denoise_pong,
+						g_d3d.rt.moments_hist,
+					};
+					UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+				} break;
 
-			case 1:
-			{
-				ID3D12Resource* resources[] =
+				case 1:
 				{
-					g_d3d.rt.diff_hist,
-					g_d3d.rt.spec_hist,
-					g_d3d.rt.moments_denoise_pong,
-				};
-				UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
-			} break;
+					ID3D12Resource* resources[] =
+					{
+						g_d3d.rt.diff_hist,
+						g_d3d.rt.spec_hist,
+						g_d3d.rt.moments_denoise_pong,
+					};
+					UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+				} break;
 
-			case 2:
-			{
-				ID3D12Resource* resources[] =
+				case 2:
 				{
-					g_d3d.rt.diff_denoise_ping,
-					g_d3d.rt.spec_denoise_ping,
-					g_d3d.rt.moments_denoise_ping,
-				};
-				UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
-			} break;
+					ID3D12Resource* resources[] =
+					{
+						g_d3d.rt.diff_denoise_ping,
+						g_d3d.rt.spec_denoise_ping,
+						g_d3d.rt.moments_denoise_ping,
+					};
+					UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+				} break;
 
-			case 3:
-			{
-				ID3D12Resource* resources[] =
+				case 3:
 				{
-					g_d3d.rt.diff_denoise_pong,
-					g_d3d.rt.spec_denoise_pong,
-					g_d3d.rt.moments_denoise_pong,
-				};
-				UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
-			} break;
+					ID3D12Resource* resources[] =
+					{
+						g_d3d.rt.diff_denoise_pong,
+						g_d3d.rt.spec_denoise_pong,
+						g_d3d.rt.moments_denoise_pong,
+					};
+					UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+				} break;
 
-			case 4:
-			{
-				ID3D12Resource* resources[] =
+				case 4:
 				{
-					g_d3d.rt.diff_denoise_ping,
-					g_d3d.rt.spec_denoise_ping,
-					g_d3d.rt.moments_denoise_ping,
-				};
-				UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
-			} break;
+					ID3D12Resource* resources[] =
+					{
+						g_d3d.rt.diff_denoise_ping,
+						g_d3d.rt.spec_denoise_ping,
+						g_d3d.rt.moments_denoise_ping,
+					};
+					UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+				} break;
+				}
 			}
 		}
-	}
-	else
-	{
-		CopyBuffer(command_list, g_d3d.rt.diff_hist, g_d3d.rt.diff_denoise_ping);
-		CopyBuffer(command_list, g_d3d.rt.spec_hist, g_d3d.rt.spec_denoise_ping);
-	}
-
-	if (!tweak_vars.reference_mode && tweak_vars.svgf_stabilize)
-	{
-		ResourceTransition(command_list, g_d3d.render_targets[rt_diff_stable[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		ResourceTransition(command_list, g_d3d.render_targets[rt_spec_stable[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-
-		command_list->SetPipelineState(g_d3d.cs.svgf_post_resample.pso);
-		command_list->Dispatch(dispatch_w, dispatch_h, 1);
-
-		ResourceTransition(command_list, g_d3d.render_targets[rt_diff_stable[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		ResourceTransition(command_list, g_d3d.render_targets[rt_spec_stable[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-		ID3D12Resource* resources[] =
+		else
 		{
-			g_d3d.render_targets[rt_diff_stable[a]],
-			g_d3d.render_targets[rt_spec_stable[a]],
-			g_d3d.rt.history_length,
-		};
-		UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+			CopyBuffer(command_list, g_d3d.rt.diff_hist, g_d3d.rt.diff_denoise_ping);
+			CopyBuffer(command_list, g_d3d.rt.spec_hist, g_d3d.rt.spec_denoise_ping);
+		}
 	}
 
-	GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseSVGF);
+	{
+		if (tweak_vars.svgf_stabilize)
+		{
+			ResourceTransition(command_list, g_d3d.render_targets[rt_diff_stable[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+			ResourceTransition(command_list, g_d3d.render_targets[rt_spec_stable[b]], D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+			command_list->SetPipelineState(g_d3d.cs.svgf_post_resample.pso);
+			command_list->Dispatch(dispatch_w, dispatch_h, 1);
+
+			ResourceTransition(command_list, g_d3d.render_targets[rt_diff_stable[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			ResourceTransition(command_list, g_d3d.render_targets[rt_spec_stable[b]], D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+			ID3D12Resource* resources[] =
+			{
+				g_d3d.render_targets[rt_diff_stable[a]],
+				g_d3d.render_targets[rt_spec_stable[a]],
+				g_d3d.rt.history_length,
+			};
+			UAVBarriers(command_list, RT_ARRAY_COUNT(resources), resources);
+		}
+
+		GPUProfiler::EndTimestampQuery(command_list, GPUProfiler::GPUTimer_DenoiseSVGF);
+	}
 
 	// ------------------------------------------------------------------
 	// Composite lighting with albedo
@@ -4194,7 +4169,7 @@ void RenderBackend::RaytraceRender()
 
 	GPUProfiler::BeginTimestampQuery(command_list, GPUProfiler::GPUTimer_TAA);
 
-	if (!tweak_vars.reference_mode && g_d3d.upscaling_aa_mode != UPSCALING_AA_MODE_OFF)
+	if (g_d3d.upscaling_aa_mode != UPSCALING_AA_MODE_OFF)
 	{
 		if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_TAA)
 		{

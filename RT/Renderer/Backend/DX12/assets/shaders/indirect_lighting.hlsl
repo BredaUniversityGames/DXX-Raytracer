@@ -224,7 +224,7 @@ void IndirectLightingRaygen()
 			float3 indirect_specular = indirect_color*specular_throughput;
 			float3 indirect_diffuse  = indirect_color*diffuse_throughput;
 
-			if (!tweak.reference_mode && tweak.svgf_enabled)
+			if (tweak.svgf_enabled)
 			{
 				indirect_specular *= rcp(lerp(0.04, 0.01 + gbuf_albedo, gbuf_metallic));
 			}

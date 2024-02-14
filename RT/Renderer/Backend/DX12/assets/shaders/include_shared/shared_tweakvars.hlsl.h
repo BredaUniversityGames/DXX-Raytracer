@@ -26,7 +26,6 @@ TWEAK_CATEGORY_END();
 TWEAK_CATEGORY_BEGIN("Pathtracer")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
 TWEAK_BOOL   ("Freezeframe",               freezeframe,               false)
-TWEAK_BOOL   ("Reference Mode",            reference_mode,            false)
 TWEAK_BOOL   ("Enable PBR",                enable_pbr,                true)
 TWEAK_BOOL   ("Enable Pathtracing",        enable_pathtracing,        true)
 TWEAK_COLOR  ("Ambient Color",             ambient_color,             (0.05f, 0.07f, 0.1f))
