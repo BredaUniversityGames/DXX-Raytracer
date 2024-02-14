@@ -287,6 +287,11 @@ void PostProcessCS(COMPUTE_ARGS)
 		{
 			debug_color = bloom7;
 		} break;
+
+		case RT_DebugRenderMode_Fsr2Reactive:
+		{
+			debug_color = img_fsr2_reactive_mask[co_render].r;
+		} break;
 	}
 
 	float3 final_color = lerp(color, debug_color, debug_blend_factor);

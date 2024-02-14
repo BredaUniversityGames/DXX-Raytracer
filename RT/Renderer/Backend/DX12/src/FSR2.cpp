@@ -77,17 +77,31 @@ void FSR2::Exit()
 }
 
 void FSR2::Dispatch(ID3D12CommandList* command_list, ID3D12Resource* rt_color, ID3D12Resource* rt_depth,
-	ID3D12Resource* rt_motion_vector, ID3D12Resource* rt_output, uint32_t render_width, uint32_t render_height,
+	ID3D12Resource* rt_motion_vector, ID3D12Resource* rt_reactive, ID3D12Resource* rt_output, uint32_t render_width, uint32_t render_height,
 	float camera_jitter_x, float camera_jitter_y, float camera_near, float camera_far, float camera_vfov_angle, float delta_time, bool reset)
 {
+	FfxCommandList ffx_command_list = ffxGetCommandListDX12(command_list);
+
+	/*FfxFsr2GenerateReactiveDescription reactive_desc = {};
+	reactive_desc.commandList = ffx_command_list;
+	reactive_desc.binaryValue = tweak_vars.amd_fsr2_auto_reactive_scale;
+	reactive_desc.colorOpaqueOnly = ffxGetResourceDX12(&data.context, rt_color);
+	reactive_desc.colorPreUpscale = ffxGetResourceDX12(&data.context, rt_color);
+	reactive_desc.cutoffThreshold = tweak_vars.amd_fsr2_auto_reactive_max;
+	reactive_desc.outReactive = ffxGetResourceDX12(&data.context, rt_reactive);
+	reactive_desc.renderSize = { render_width, render_height };
+	reactive_desc.scale = 1.0f;
+	reactive_desc.flags = FFX_FSR2_ENABLE_HIGH_DYNAMIC_RANGE;
+
+	FFX_CALL(ffxFsr2ContextGenerateReactiveMask(&data.context, &reactive_desc));*/
+
 	FfxFsr2DispatchDescription dispatch_desc = {};
-	dispatch_desc.commandList = ffxGetCommandListDX12(command_list);
+	dispatch_desc.commandList = ffx_command_list;
 	dispatch_desc.color = ffxGetResourceDX12(&data.context, rt_color);
 	dispatch_desc.depth = ffxGetResourceDX12(&data.context, rt_depth);
 	dispatch_desc.motionVectors = ffxGetResourceDX12(&data.context, rt_motion_vector);
+	dispatch_desc.reactive = ffxGetResourceDX12(&data.context, rt_reactive);
 	dispatch_desc.exposure = ffxGetResourceDX12(&data.context, nullptr);
-	// Masks objects that have no velocity vectors to reduce ghosting on these objects
-	dispatch_desc.reactive = ffxGetResourceDX12(&data.context, nullptr);
 	dispatch_desc.transparencyAndComposition = ffxGetResourceDX12(&data.context, nullptr);
 	dispatch_desc.output = ffxGetResourceDX12(&data.context, rt_output);
 	// Jitter offsets can be calculated using ffxFsr2GetJitterPhaseCount and ffxFsr2GetJitterOffset

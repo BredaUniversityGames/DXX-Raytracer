@@ -79,6 +79,7 @@ TWEAK_CATEGORY_BEGIN("Upscaling & Anti-aliasing")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
 TWEAK_OPTIONS("Upscaling & AA mode", upscaling_aa_mode, 1, "Off", "TAA", "AMD FSR 2.2")
 TWEAK_OPTIONS("FSR2 mode", amd_fsr2_mode, 1, "No Upscaling", "Quality", "Balanced", "Performance", "Ultra performance")
+TWEAK_FLOAT("Reactive scale", amd_fsr2_reactive_scale,				  0.05,		0.0,  1.0)
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END();
 

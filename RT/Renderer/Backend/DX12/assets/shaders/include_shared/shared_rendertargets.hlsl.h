@@ -61,4 +61,5 @@
 	_(resolve,							  51,     1,     1,	   true,			   float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
 	_(color_reference,                    52,     1,     1,	   false,			   float4, DXGI_FORMAT_R32G32B32A32_FLOAT) \
 	_(color_final,                        53,     1,     1,	   true,			   float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
-	_(debug,							  54,     1,     1,	   false,			   float4, DXGI_FORMAT_R8G8B8A8_UNORM)
+	_(debug,							  54,     1,     1,	   false,			   float4, DXGI_FORMAT_R8G8B8A8_UNORM) \
+	_(fsr2_reactive_mask,				  55,     1,     1,	   false,			   float, DXGI_FORMAT_R8_UNORM)

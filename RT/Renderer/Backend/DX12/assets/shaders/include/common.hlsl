@@ -71,7 +71,8 @@ using namespace RT;
 #define RT_DebugRenderMode_Bloom5            (20)
 #define RT_DebugRenderMode_Bloom6            (21)
 #define RT_DebugRenderMode_Bloom7            (22)
-#define RT_DebugRenderMode_COUNT             (23)
+#define RT_DebugRenderMode_Fsr2Reactive		 (23)
+#define RT_DebugRenderMode_COUNT             (24)
 
 static const float PI = 3.14159265359;
 #define LARGE_NUMBER 1000000000
@@ -111,6 +112,7 @@ struct RT_Triangle
 #define RT_MaterialFlag_BlackbodyRadiator (0x1) // things like lava, basically just treats the albedo as an emissive map and skips all shading
 #define RT_MaterialFlag_NoCastingShadow   (0x2) // some materials/meshes we do not want to cast shadows (like the 3D cockpit)
 #define RT_MaterialFlag_Light             (0x4)
+#define RT_MaterialFlag_Fsr2ReactiveMask  (0x8)
 
 // @Volatile: Must match RT_LightKind in ApiTypes.h
 #define RT_LightKind_Area_Sphere (0)

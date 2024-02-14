@@ -108,6 +108,9 @@ void PrimaryRaygen()
     img_visibility_prim[dispatch_idx] = geo.vis_prim;
     img_visibility_bary[dispatch_idx] = geo.vis_bary;
 
+	// Determine if the pixel should write to the reactive mask for FSR2
+	img_fsr2_reactive_mask[pixel_pos] = float(g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask) * tweak.amd_fsr2_reactive_scale;
+
 #if RT_PIXEL_DEBUG
     // Write pixel debug data
     PixelDebugData debug_data = (PixelDebugData)0;
