@@ -4204,9 +4204,9 @@ void RenderBackend::RaytraceRender()
 				g_d3d.rt.color, g_d3d.rt.depth, g_d3d.rt.motion, g_d3d.render_targets[rt_taa_result[a]],
 				g_d3d.render_width, g_d3d.render_height, scene_cb->taa_jitter.x, scene_cb->taa_jitter.y,
 				g_d3d.scene.camera.near_plane, g_d3d.scene.camera.far_plane, g_d3d.scene.camera.vfov,
-				16.6f /* TODO: Pass in actual delta time */, g_d3d.io.scene_transition
+				g_d3d.io.delta_time * 1000.0f, g_d3d.io.scene_transition
 			);
-			
+
 			D3D12_RESOURCE_BARRIER fsr2_after_barriers[] = {
 				GetTransitionBarrier(g_d3d.rt.color, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 				GetTransitionBarrier(g_d3d.rt.depth, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
