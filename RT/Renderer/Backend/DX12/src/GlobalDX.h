@@ -197,7 +197,7 @@ namespace RT
 
 	enum RenderTarget
 	{
-		#define RT_RENDER_TARGETS_DECLARE_ENUM(name, reg, scale_x, scale_y, type, format) \
+		#define RT_RENDER_TARGETS_DECLARE_ENUM(name, reg, scale_x, scale_y, output_res, type, format) \
 			RenderTarget_##name = reg,
 
 		RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_ENUM)
@@ -237,12 +237,12 @@ namespace RT
 		// ------------------------------------------------------------------
 		// Render targets
 
-#define RT_RENDER_TARGETS_DECLARE_UAVS(name, reg, scale_x, scale_y, type, format) \
+#define RT_RENDER_TARGETS_DECLARE_UAVS(name, reg, scale_x, scale_y, output_res, type, format) \
 	D3D12GlobalDescriptors_UAV_##name,
 
 		RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_UAVS)
 
-#define RT_RENDER_TARGETS_DECLARE_SRVS(name, reg, scale_x, scale_y, type, format) \
+#define RT_RENDER_TARGETS_DECLARE_SRVS(name, reg, scale_x, scale_y, output_res, type, format) \
 	D3D12GlobalDescriptors_SRV_##name,
 
 		RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_SRVS)
@@ -421,7 +421,7 @@ namespace RT
 		{
 			struct
 			{
-				#define RT_RENDER_TARGETS_DECLARE_RESOURCES(name, reg, scale_x, scale_y, type, format) \
+				#define RT_RENDER_TARGETS_DECLARE_RESOURCES(name, reg, scale_x, scale_y, output_res, type, format) \
 					ID3D12Resource *name;
 
 				RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_RESOURCES)

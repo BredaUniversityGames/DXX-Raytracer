@@ -1852,26 +1852,13 @@ namespace
 
     void CreateIntermediateRendertargets()
     {
-		auto CreateRenderTarget = [](const wchar_t *name, int reg, int scale_x, int scale_y, DXGI_FORMAT format, ID3D12Resource **result)
+		auto CreateRenderTarget = [](const wchar_t *name, int reg, int scale_x, int scale_y, bool output_res, DXGI_FORMAT format, ID3D12Resource **result)
 		{
+			(void)reg;
 			uint32_t width = (g_d3d.render_width + scale_x - 1) / scale_x;
 			uint32_t height = (g_d3d.render_height + scale_y - 1) / scale_y;
 
-			if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2 &&
-				(reg == RenderTarget_taa_result ||
-				reg == RenderTarget_taa_history ||
-				reg == RenderTarget_scene ||
-				reg == RenderTarget_color_final ||
-				reg == RenderTarget_bloom_pong ||
-				reg == RenderTarget_bloom_prepass ||
-				reg == RenderTarget_bloom0 ||
-				reg == RenderTarget_bloom1 ||
-				reg == RenderTarget_bloom2 ||
-				reg == RenderTarget_bloom3 ||
-				reg == RenderTarget_bloom4 ||
-				reg == RenderTarget_bloom5 ||
-				reg == RenderTarget_bloom6 ||
-				reg == RenderTarget_bloom7))
+			if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2 && output_res)
 			{
 				width = (g_d3d.output_width + scale_x - 1) / scale_x;
 				height = (g_d3d.output_height + scale_y - 1) / scale_y;
@@ -1881,8 +1868,8 @@ namespace
 				, width, height, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		};
 
-#define RT_CREATE_RENDER_TARGETS(name, reg, scale_x, scale_y, type, format) \
-		CreateRenderTarget(RT_PASTE(L, #name), reg, scale_x, scale_y, format, &g_d3d.render_targets[RT_PASTE(RenderTarget_, name)]); \
+#define RT_CREATE_RENDER_TARGETS(name, reg, scale_x, scale_y, output_res, type, format) \
+		CreateRenderTarget(RT_PASTE(L, #name), reg, scale_x, scale_y, output_res, format, &g_d3d.render_targets[RT_PASTE(RenderTarget_, name)]); \
 		g_d3d.render_target_formats[RT_PASTE(RenderTarget_, name)] = format;
 
 		RT_RENDER_TARGETS(RT_CREATE_RENDER_TARGETS)

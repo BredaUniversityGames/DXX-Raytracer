@@ -133,11 +133,11 @@ struct RT_Light
 // ------------------------------------------------------------------
 // Render Targets
 
-#define RT_RENDER_TARGET_DECLARE_UAVS(name, reg, scale_x, scale_y, type, fmt) \
+#define RT_RENDER_TARGET_DECLARE_UAVS(name, reg, scale_x, scale_y, output_dir, type, fmt) \
 	RWTexture2D<type> img_##name : register(u##reg, space999);
 RT_RENDER_TARGETS(RT_RENDER_TARGET_DECLARE_UAVS)
 
-#define RT_RENDER_TARGET_DECLARE_SRVS(name, reg, scale_x, scale_y, type, fmt) \
+#define RT_RENDER_TARGET_DECLARE_SRVS(name, reg, scale_x, scale_y, output_dir, type, fmt) \
 	Texture2D<type> tex_##name : register(t##reg, space999);
 RT_RENDER_TARGETS(RT_RENDER_TARGET_DECLARE_SRVS)
 
