@@ -1007,10 +1007,13 @@ void ComputeTextureGradientRayCone(float3 ray_dir, float ray_cone_radius, float2
 // This function will sample a texture anisotropically, using ray cones to determine which mips will be sampled
 float4 SampleTextureAnisotropic(Texture2D tex, SamplerState samp, float2 tex_gradient1, float2 tex_gradient2, float2 uv)
 {
-	if (tweak.mip_bias != 0)
+	if (tweak.mip_bias_u != 0.0)
 	{
-		tex_gradient1 *= pow(2.0, tweak.mip_bias);
-		tex_gradient2 *= pow(2.0, tweak.mip_bias);
+		tex_gradient1 *= pow(2.0, tweak.mip_bias_u);
+	}
+	if (tweak.mip_bias_v != 0.0)
+	{
+		tex_gradient2 *= pow(2.0, tweak.mip_bias_v);
 	}
 
 	return tex.SampleGrad(samp, uv, tex_gradient1, tex_gradient2);

@@ -140,7 +140,8 @@ TWEAK_CATEGORY_END()
 
 TWEAK_CATEGORY_BEGIN("Mipmaps")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_INT    ("Mip Bias",				   mip_bias,				  -1,		-10,  10)
+TWEAK_FLOAT    ("Mip Bias U",			   mip_bias_u,				  -1.0,		-10.0,  10.0)
+TWEAK_FLOAT    ("Mip Bias V",			   mip_bias_v,				  -1.0,		-10.0,  10.0)
 TWEAK_FLOAT  ("Secondary bounce bias",	   secondary_bounce_bias,	  0.0005,	0.00001, 1.0)
 TWEAK_FLOAT  ("Angle cutoff",			   angle_cutoff,			  0.125,    0.0000001, 1.0)
 // ------------------------------------------------------------------------------------------------------------------

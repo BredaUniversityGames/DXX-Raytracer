@@ -2959,6 +2959,14 @@ void RenderBackend::EndScene()
 		{
 			TweakVars* frame_tweakvars = frame->tweak_vars.As<TweakVars>();
 			memcpy(frame_tweakvars, &tweak_vars, sizeof(TweakVars));
+
+			if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+			{
+				RT_Vec2 fsr2_mip_bias = FSR2::GetMipBiasForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
+				frame_tweakvars->mip_bias_u = fsr2_mip_bias.x;
+				frame_tweakvars->mip_bias_v = fsr2_mip_bias.y;
+			}
+
 			D3D12_CPU_DESCRIPTOR_HANDLE cbv = frame->descriptors.GetCPUDescriptor(D3D12GlobalDescriptors_CBV_TweakVars);
 			D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc = {};
 			cbv_desc.BufferLocation = frame->tweak_vars.gpu;

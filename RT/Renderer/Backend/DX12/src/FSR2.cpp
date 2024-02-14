@@ -5,6 +5,8 @@
 #include "ffx_fsr2.h"
 #include "dx12/ffx_fsr2_dx12.h"
 
+#include <cmath>
+
 using namespace RT;
 
 static float FsrModeScalingFactors[FSR_MODE_NUM_MODES] = { 1.0f, 1.5f, 1.7f, 2.0f, 3.0f };
@@ -147,6 +149,11 @@ void FSR2::AdjustRenderResolutionForFSRMode(uint32_t output_width, uint32_t outp
 
 	render_width = std::max(render_width, 1u);
 	render_height = std::max(render_height, 1u);
+}
+
+RT_Vec2 FSR2::GetMipBiasForFSRMode(uint32_t output_width, uint32_t output_height, uint32_t render_width, uint32_t render_height)
+{
+	return RT_Vec2Make(std::log2f((float)render_width / (float)output_width) - 1.0f, std::log2f((float)render_height / (float)output_height) - 1.0f);
 }
 
 void FSR2::OnWindowResize(uint32_t width, uint32_t height)
