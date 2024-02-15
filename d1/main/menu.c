@@ -1365,10 +1365,10 @@ void raytrace_config()
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Pathtracing:"; nitems++;
 
 	opt_gr_enable_pathtracing = nitems;
-	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable Pathtracing"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pathtracing")); nitems++;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable pathtraced GI"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pathtracing")); nitems++;
 
 	opt_gr_enable_pbr = nitems;
-	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable PBR"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pbr")); nitems++;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable physically-based rendering"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pbr")); nitems++;
 
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Lighting Quality:"; nitems++;
@@ -1423,7 +1423,7 @@ void raytrace_config()
 
 	// --- FOV ---
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
-	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "FOV:"; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "FOV (60 - 120):"; nitems++;
 
 	opt_gr_fov = nitems;
 	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Amount"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("fov"))) - 60; m[nitems].min_value = 0; m[nitems].max_value = 30; nitems++;

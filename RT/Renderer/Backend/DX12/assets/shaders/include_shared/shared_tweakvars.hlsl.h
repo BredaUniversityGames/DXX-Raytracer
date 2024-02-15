@@ -19,7 +19,7 @@ TWEAK_BOOL("Vsync", vsync, true)
 
 TWEAK_CATEGORY_BEGIN("Camera");
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_FLOAT  ("FOV",					   fov,						  60.0,		60.0, 90.0)
+TWEAK_FLOAT  ("FOV",					   fov,						  60.0,		60.0, 120.0)
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END();
 
