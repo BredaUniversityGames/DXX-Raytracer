@@ -3279,6 +3279,299 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 	return g_texture_slotmap.Insert(resource);
 }
 
+//  Code modified from DirectXTK12 : DDSTextureLoader::CreateTextureFromDDS (https://github.com/microsoft/DirectXTK12/blob/main/Src/DDSTextureLoader.cpp)
+RT_ResourceHandle RenderBackend::UploadTextureDDS(const RT_UploadTextureParamsDDS& texture_params)
+{
+	RT::MemoryScope temp;
+
+	if (!texture_params.bitData)
+	{
+		printf("RenderBackend::UploadTextureDDS -- bitData empty returning checkerboard\n");
+		return g_d3d.pink_checkerboard_texture;
+	}
+
+	TextureResource resource = {};
+	char* texture_resource_name = RT_ArenaPrintF(temp, "Texture: %s", texture_params.name);
+
+	// first process the dds data
+
+	const UINT width = texture_params.header->width;
+	UINT height = texture_params.header->height;
+	UINT depth = texture_params.header->depth;
+
+	D3D12_RESOURCE_DIMENSION resDim = D3D12_RESOURCE_DIMENSION_UNKNOWN;
+	UINT arraySize = 1;
+	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+	bool isCubeMap = false;
+
+	size_t mipCount = texture_params.header->mipMapCount;
+	if (0 == mipCount)
+	{
+		mipCount = 1;
+	}
+
+	if ((texture_params.header->ddspf.flags & DDS_FOURCC) &&
+		(MAKEFOURCC('D', 'X', '1', '0') == texture_params.header->ddspf.fourCC))
+	{
+		DDS_HEADER_DXT10* d3d10ext = (DDS_HEADER_DXT10*)(texture_params.header + 1);	// move pointer to end of DDS_HEADER and cast to DDS_HEADER_DXT10 (1 = size of DDS_HEADER)
+
+		arraySize = d3d10ext->arraySize;
+		if (arraySize == 0)
+		{
+			printf("RenderBackend::UploadTextureDDS -- arraySize 0 returning checkerboard\n");
+			return g_d3d.pink_checkerboard_texture;
+		}
+
+		switch (d3d10ext->dxgiFormat)
+		{
+		case DXGI_FORMAT_NV12:
+		case DXGI_FORMAT_P010:
+		case DXGI_FORMAT_P016:
+		case DXGI_FORMAT_420_OPAQUE:
+			if ((d3d10ext->resourceDimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+				|| (width % 2) != 0 || (height % 2) != 0)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet width/height requirements.\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+			break;
+
+		case DXGI_FORMAT_YUY2:
+		case DXGI_FORMAT_Y210:
+		case DXGI_FORMAT_Y216:
+		case DXGI_FORMAT_P208:
+			if ((width % 2) != 0)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet width requirements.\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+			break;
+
+		case DXGI_FORMAT_NV11:
+			if ((width % 4) != 0)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet width requirements.\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+			break;
+
+		case DXGI_FORMAT_AI44:
+		case DXGI_FORMAT_IA44:
+		case DXGI_FORMAT_P8:
+		case DXGI_FORMAT_A8P8:
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Legacy stream video texture formats are not supported by Direct3D.\n");
+			return g_d3d.pink_checkerboard_texture;
+		case DXGI_FORMAT_V208:
+			if ((d3d10ext->resourceDimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+				|| (height % 2) != 0)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet height requirements.\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+			break;
+
+		default:
+			if (DDSBitsPerPixel(d3d10ext->dxgiFormat) == 0)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Unknown DXGI format (%u)\n", (uint32_t)(d3d10ext->dxgiFormat));
+				return g_d3d.pink_checkerboard_texture;
+			}
+			break;
+		}
+		
+
+		format = d3d10ext->dxgiFormat;
+
+		switch (d3d10ext->resourceDimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+			// D3DX writes 1D textures with a fixed Height of 1
+			if ((texture_params.header->flags & DDS_HEIGHT) && height != 1)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: TEXTURE1D height not 1\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+			height = depth = 1;
+			break;
+
+		case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+			if (d3d10ext->miscFlag & 0x4 ) // RESOURCE_MISC_TEXTURECUBE
+			{
+				arraySize *= 6;
+				isCubeMap = true;
+			}
+			depth = 1;
+			break;
+
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+			if (!(texture_params.header->flags & DDS_HEADER_FLAGS_VOLUME))
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: TEXTURE3D not flagged as volume\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+
+			if (arraySize > 1)
+			{
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Volume textures are not texture arrays\n");
+				return g_d3d.pink_checkerboard_texture;
+			}
+			break;
+
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimension buffer type not supported for textures\n");
+			return g_d3d.pink_checkerboard_texture;
+
+		case D3D12_RESOURCE_DIMENSION_UNKNOWN:
+		default:
+
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Unknown resource dimension (%u)\n", (uint32_t)(d3d10ext->resourceDimension));
+			return g_d3d.pink_checkerboard_texture;
+		}
+
+		resDim = (D3D12_RESOURCE_DIMENSION)(d3d10ext->resourceDimension);
+	}
+	else
+	{
+		format = GetDXGIFormat(&texture_params.header->ddspf);
+
+		if (format == DXGI_FORMAT_UNKNOWN)
+		{
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Legacy DDS format not supported\n");
+			return g_d3d.pink_checkerboard_texture;
+		}
+
+		if (texture_params.header->flags & DDS_HEADER_FLAGS_VOLUME)
+		{
+			resDim = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+		}
+		else
+		{
+			if (texture_params.header->caps2 & DDS_CUBEMAP)
+			{
+				// We require all six faces to be defined
+				if ((texture_params.header->caps2 & DDS_CUBEMAP_ALLFACES) != DDS_CUBEMAP_ALLFACES)
+				{
+					printf("RenderBackend::UploadTextureDDS -- ERROR: DirectX 12 does not support partial cubemaps\n");
+					return g_d3d.pink_checkerboard_texture;
+				}
+
+				arraySize = 6;
+				isCubeMap = true;
+			}
+
+			depth = 1;
+			resDim = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+			// Note there's no way for a legacy Direct3D 9 DDS to express a '1D' texture
+		}
+
+		assert(DDSBitsPerPixel(format) != 0);
+	}
+
+	
+	// Bound sizes (for security purposes we don't trust DDS file metadata larger than the Direct3D hardware requirements)
+	if (mipCount > D3D12_REQ_MIP_LEVELS)
+	{
+		printf("RenderBackend::UploadTextureDDS -- ERROR: Too many mipmap levels defined for DirectX 12\n");
+		return g_d3d.pink_checkerboard_texture;
+	}
+
+	switch (resDim)
+	{
+	case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+		if ((arraySize > D3D12_REQ_TEXTURE1D_ARRAY_AXIS_DIMENSION) ||
+			(width > D3D12_REQ_TEXTURE1D_U_DIMENSION))
+		{
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (1D: array %u, size %u)\n", arraySize, width);
+			return g_d3d.pink_checkerboard_texture;
+		}
+		break;
+
+	case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+		if (isCubeMap)
+		{
+			// This is the right bound because we set arraySize to (NumCubes*6) above
+			if ((arraySize > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) ||
+				(width > D3D12_REQ_TEXTURECUBE_DIMENSION) ||
+				(height > D3D12_REQ_TEXTURECUBE_DIMENSION))
+			{
+
+				printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (2D cubemap: array %u, size %u by %u)\n", arraySize, width, height);
+				return g_d3d.pink_checkerboard_texture;
+			}
+		}
+		else if ((arraySize > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) ||
+			(width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION) ||
+			(height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION))
+		{
+
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (2D: array %u, size %u by %u)\n", arraySize, width, height);
+			return g_d3d.pink_checkerboard_texture;
+		}
+		break;
+
+	case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+		if ((arraySize > 1) ||
+			(width > D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION) ||
+			(height > D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION) ||
+			(depth > D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION))
+		{
+
+			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (3D: array %u, size %u by %u by %u)\n", arraySize, width, height, depth);
+			return g_d3d.pink_checkerboard_texture;
+		}
+		break;
+
+	case D3D12_RESOURCE_DIMENSION_BUFFER:
+
+		printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimension buffer type not supported for textures\n");
+		return g_d3d.pink_checkerboard_texture;
+
+	default:
+
+		printf("RenderBackend::UploadTextureDDS -- ERROR: Unknown resource dimension (%u)\n", (uint32_t)(resDim));
+		return g_d3d.pink_checkerboard_texture;
+	}
+
+	
+	/*  Additional checks not implemented from DirectXTK12
+	const UINT numberOfPlanes = D3D12GetFormatPlaneCount(d3dDevice, format);
+	if (!numberOfPlanes)
+		return E_INVALIDARG;
+
+	if ((numberOfPlanes > 1) && IsDepthStencil(format))
+	{
+		// DirectX 12 uses planes for stencil, DirectX 11 does not
+		return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+	}
+
+	if (outIsCubeMap != nullptr)
+	{
+		*outIsCubeMap = isCubeMap;
+	}
+	*/
+
+	// convert to srgb if needed
+	if (texture_params.sRGB)
+		format = MakeSRGB(format);
+
+	// decide how many mipmaps to create
+	double fullPowerOf2 = log(width) / log(2);	// what power of two is the full texture size
+	double minPowerOf2 = log(64) / log(2);		// power of two for 64px.  (this is the minimum mip map size we want to use.  Below 64px dds files start to get packed inefficiently into memory and the visual difference is not noticeable .)
+	size_t finalMipCount = lround(fullPowerOf2 - minPowerOf2) + 1;
+
+	resource.texture = RT_CreateTexture(Utf16FromUtf8(temp, texture_resource_name), format, D3D12_RESOURCE_FLAG_NONE, (size_t)width, (uint32_t)height,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, (uint16_t)finalMipCount);
+
+	UploadTextureDataDDS(resource.texture, texture_params.header->width, texture_params.header->height,  DDSBitsPerPixel(format) , finalMipCount, texture_params.bitData);
+
+	resource.descriptors = g_d3d.cbv_srv_uav.Allocate(1);
+	CreateTextureSRV(resource.texture, resource.descriptors.GetCPUDescriptor(0), format, (uint32_t)finalMipCount);
+
+	return g_texture_slotmap.Insert(resource);
+}
+
 RT_ResourceHandle RenderBackend::UploadMesh(const RT_UploadMeshParams& mesh_params)
 {
 	MemoryScope temp_arena;
