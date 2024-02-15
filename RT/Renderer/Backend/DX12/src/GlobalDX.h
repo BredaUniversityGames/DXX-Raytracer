@@ -36,7 +36,7 @@ namespace RT
 	class CommandQueue;
 
 	constexpr bool     GPU_VALIDATION_ENABLED   = false;
-	constexpr uint32_t BACK_BUFFER_COUNT		= 3;
+	constexpr uint32_t BACK_BUFFER_COUNT		= 2;
 	constexpr uint32_t MAX_INSTANCES			= 1000;
 	constexpr uint32_t MAX_BOTTOM_LEVELS		= 1000;
 	constexpr uint32_t HALTON_SAMPLE_COUNT      = 128;

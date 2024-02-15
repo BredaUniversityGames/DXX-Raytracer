@@ -165,6 +165,12 @@ void FSR2::AdjustRenderResolutionForFSRMode(uint32_t output_width, uint32_t outp
 	render_height = std::max(render_height, 1u);
 }
 
+void FSR2::RescaleResolutionForFSRMode(uint32_t& width, uint32_t& height)
+{
+	width = (uint32_t)((float)width / FsrModeScalingFactors[g_d3d.amd_fsr2_mode]);
+	height = (uint32_t)((float)height / FsrModeScalingFactors[g_d3d.amd_fsr2_mode]);
+}
+
 RT_Vec2 FSR2::GetMipBiasForFSRMode(uint32_t output_width, uint32_t output_height, uint32_t render_width, uint32_t render_height)
 {
 	return RT_Vec2Make(std::log2f((float)render_width / (float)output_width) - 1.0f, std::log2f((float)render_height / (float)output_height) - 1.0f);

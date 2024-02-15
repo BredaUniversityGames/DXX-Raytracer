@@ -119,9 +119,19 @@ target_link_libraries(Renderer
     Renderer_Common
     RT_CORE
     "${CMAKE_CURRENT_SOURCE_DIR}/DXC/lib/x64/dxcompiler.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/Debug/ffx_fsr2_api_x64d.lib"
-    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/Debug/ffx_fsr2_api_dx12_x64d.lib"
 )
+
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+target_link_libraries(Renderer
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_x64d.lib"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_dx12_x64d.lib"
+)
+elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo OR CMAKE_BUILD_TYPE MATCHES Release)
+target_link_libraries(Renderer
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_x64.lib"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_dx12_x64.lib"
+)
+endif()
 
 add_custom_command(TARGET Renderer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

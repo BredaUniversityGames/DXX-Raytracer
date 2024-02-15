@@ -2736,6 +2736,28 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 			ImGui::Text("Output resolution: %ux%u", g_d3d.output_width, g_d3d.output_height);
 			ImGui::Text("Render resolution: %ux%u", g_d3d.render_width, g_d3d.render_height);
 
+			static uint32_t fps = 0;
+			static uint32_t fps_accum = 0;
+			static float frame_time = 0.0f;
+			static float frame_time_accum = 0.0f;
+			static uint16_t num_accumulated = 0;
+
+			fps_accum += (uint32_t)(1.0 / g_d3d.io.delta_time);
+			frame_time_accum += g_d3d.io.delta_time;
+			num_accumulated++;
+
+			if (frame_time_accum >= 1.0f)
+			{
+				frame_time = frame_time_accum / num_accumulated;
+				fps = (uint32_t)(1.0 / frame_time);
+
+				fps_accum = 0;
+				frame_time_accum = 0.0f;
+				num_accumulated = 0;
+			}
+			ImGui::Text("FPS: %u", fps);
+			ImGui::Text("Frame time: %.3fms", frame_time * 1000.0);
+
 			int current_render_mode = g_d3d.io.debug_render_mode;
 
 			char *render_modes[] = { 
@@ -2847,14 +2869,11 @@ void RenderBackend::BeginFrame()
 
 void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 {
+	g_d3d.render_width_override = scene_settings->render_width_override;
+	g_d3d.render_height_override = scene_settings->render_height_override;
 	if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
 	{
-		FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width_override, g_d3d.render_height_override);
-	}
-	else
-	{
-		g_d3d.render_width_override = scene_settings->render_width_override;
-		g_d3d.render_height_override = scene_settings->render_height_override;
+		FSR2::RescaleResolutionForFSRMode(g_d3d.render_width_override, g_d3d.render_height_override);
 	}
 
 	if (!RT_Vec3AreEqual(scene_settings->camera->position, g_d3d.scene.camera.position, 0.001f) ||
@@ -3171,10 +3190,11 @@ void RenderBackend::OnWindowResize(uint32_t width, uint32_t height)
 	g_d3d.output_width = g_d3d.render_width = width;
 	g_d3d.output_height = g_d3d.render_height = height;
 
+	FSR2::OnWindowResize(g_d3d.output_width, g_d3d.output_height);
+
 	if (g_d3d.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
 	{
 		FSR2::AdjustRenderResolutionForFSRMode(g_d3d.output_width, g_d3d.output_height, g_d3d.render_width, g_d3d.render_height);
-		FSR2::OnWindowResize(g_d3d.output_width, g_d3d.output_height);
 	}
 	else
 	{
