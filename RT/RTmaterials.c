@@ -129,13 +129,19 @@ static void RT_ParseMaterialDefinitionFile(int bm_index, RT_Material *material, 
 
 			int blackbody = 0;
 			RT_ConfigReadInt(&cfg, RT_StringLiteral("blackbody"), &blackbody);
-
 			material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_BlackbodyRadiator, blackbody);
 
 			int no_casting_shadow = 0;
 			RT_ConfigReadInt(&cfg, RT_StringLiteral("no_casting_shadow"), &no_casting_shadow);
-
 			material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_NoCastingShadow, no_casting_shadow);
+
+			int is_light = 0;
+			RT_ConfigReadInt(&cfg, RT_StringLiteral("is_light"), &is_light);
+			material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_Light, is_light);
+
+			int fsr2_reactive_mask = 0;
+			RT_ConfigReadInt(&cfg, RT_StringLiteral("fsr2_reactive_mask"), &fsr2_reactive_mask);
+			material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_Fsr2ReactiveMask, fsr2_reactive_mask);
 
 			if (default_roughness) *default_roughness = !has_roughness;
 			if (default_metalness) *default_metalness = !has_metalness;

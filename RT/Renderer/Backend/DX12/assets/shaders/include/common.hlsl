@@ -71,7 +71,8 @@ using namespace RT;
 #define RT_DebugRenderMode_Bloom5            (20)
 #define RT_DebugRenderMode_Bloom6            (21)
 #define RT_DebugRenderMode_Bloom7            (22)
-#define RT_DebugRenderMode_COUNT             (23)
+#define RT_DebugRenderMode_Fsr2Reactive		 (23)
+#define RT_DebugRenderMode_COUNT             (24)
 
 static const float PI = 3.14159265359;
 #define LARGE_NUMBER 1000000000
@@ -111,6 +112,7 @@ struct RT_Triangle
 #define RT_MaterialFlag_BlackbodyRadiator (0x1) // things like lava, basically just treats the albedo as an emissive map and skips all shading
 #define RT_MaterialFlag_NoCastingShadow   (0x2) // some materials/meshes we do not want to cast shadows (like the 3D cockpit)
 #define RT_MaterialFlag_Light             (0x4)
+#define RT_MaterialFlag_Fsr2ReactiveMask  (0x8)
 
 // @Volatile: Must match RT_LightKind in ApiTypes.h
 #define RT_LightKind_Area_Sphere (0)
@@ -133,11 +135,11 @@ struct RT_Light
 // ------------------------------------------------------------------
 // Render Targets
 
-#define RT_RENDER_TARGET_DECLARE_UAVS(name, reg, scale_x, scale_y, type, fmt) \
+#define RT_RENDER_TARGET_DECLARE_UAVS(name, reg, scale_x, scale_y, output_dir, type, fmt) \
 	RWTexture2D<type> img_##name : register(u##reg, space999);
 RT_RENDER_TARGETS(RT_RENDER_TARGET_DECLARE_UAVS)
 
-#define RT_RENDER_TARGET_DECLARE_SRVS(name, reg, scale_x, scale_y, type, fmt) \
+#define RT_RENDER_TARGET_DECLARE_SRVS(name, reg, scale_x, scale_y, output_dir, type, fmt) \
 	Texture2D<type> tex_##name : register(t##reg, space999);
 RT_RENDER_TARGETS(RT_RENDER_TARGET_DECLARE_SRVS)
 
@@ -347,20 +349,13 @@ float RandomSample(uint2 xy, uint id)
 {
 	float result = 0;
 
-	if (tweak.reference_mode && g_global_cb.frame_index >= BLUE_NOISE_TEX_COUNT)
-	{
-		result = IntegerHash(uint3(xy, g_global_cb.frame_index + id)).x;
-	}
-	else
-	{
-		uint cycle = g_global_cb.frame_index / BLUE_NOISE_TEX_COUNT;
+	uint cycle = g_global_cb.frame_index / BLUE_NOISE_TEX_COUNT;
 
-		uint texture_index  = ((g_global_cb.frame_index + id) / 4) % BLUE_NOISE_TEX_COUNT;
-		uint texture_offset = ((g_global_cb.frame_index + id) % 4);
+	uint texture_index  = ((g_global_cb.frame_index + id) / 4) % BLUE_NOISE_TEX_COUNT;
+	uint texture_offset = ((g_global_cb.frame_index + id) % 4);
 
-		float4 s = g_blue_noise[NonUniformResourceIndex(texture_index)].Load(uint3((xy + 13*cycle) % 64, 0));
-		result = s[texture_offset];
-	}
+	float4 s = g_blue_noise[NonUniformResourceIndex(texture_index)].Load(uint3((xy + 13*cycle) % 64, 0));
+	result = s[texture_offset];
 
 	return result;
 }
@@ -728,7 +723,7 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 	}
 }
 
-bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics, inout Material material)
+bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics, int2 pixel_pos, inout Material material)
 {
 	InstanceData instance_data = g_instance_data_buffer[instance_idx];
 	RT_Triangle hit_triangle = GetHitTriangle(instance_data.triangle_buffer_idx, primitive_idx);
@@ -807,7 +802,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 	{
 		float4 color = UnpackRGBA(instance_data.material_color);
 		float4 tri_color = UnpackRGBA(hit_triangle.color);
-		float  dither = RandomSample(DispatchRaysIndex().xy, InstanceIndex());
+		float  dither = RandomSample(pixel_pos, instance_idx);
 
 		return dither > color.a * tri_color.a;
 	}
@@ -952,8 +947,8 @@ RayDesc GetRayDesc(uint2 dispatch_idx, uint2 dispatch_dim)
 	dispatch_uv.y = 1.0f - dispatch_uv.y;
 	dispatch_uv.y -= g_global_cb.viewport_offset_y;
 
-	// Apply TAA jitter if TAA is enabled or reference mode is enabled
-	if (tweak.reference_mode || tweak.taa_enabled)
+	// Apply TAA jitter if TAA is enabled
+	if (tweak.upscaling_aa_mode != 0)
 	{
 		dispatch_uv += GetTAAJitter(dispatch_idx);
 	}
@@ -1015,10 +1010,13 @@ void ComputeTextureGradientRayCone(float3 ray_dir, float ray_cone_radius, float2
 // This function will sample a texture anisotropically, using ray cones to determine which mips will be sampled
 float4 SampleTextureAnisotropic(Texture2D tex, SamplerState samp, float2 tex_gradient1, float2 tex_gradient2, float2 uv)
 {
-	if (tweak.mip_bias != 0)
+	if (tweak.mip_bias_u != 0.0)
 	{
-		tex_gradient1 *= pow(2.0, tweak.mip_bias);
-		tex_gradient2 *= pow(2.0, tweak.mip_bias);
+		tex_gradient1 *= pow(2.0, tweak.mip_bias_u);
+	}
+	if (tweak.mip_bias_v != 0.0)
+	{
+		tex_gradient2 *= pow(2.0, tweak.mip_bias_v);
 	}
 
 	return tex.SampleGrad(samp, uv, tex_gradient1, tex_gradient2);

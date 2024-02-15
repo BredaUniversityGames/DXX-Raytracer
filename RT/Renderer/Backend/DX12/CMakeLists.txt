@@ -39,7 +39,7 @@ set (Renderer_HEADER
 "src/DescriptorArena.hpp"
 "src/mikktspace.h"
 "DirectXTK12/src/DDSc.h"
-)
+"src/FSR2.h")
 
 #I hate cmake for not allowing me to link interface libs. Ah well, now we do this indirection!
 set (Renderer_PUBLIC_HEADER
@@ -63,6 +63,7 @@ set (Renderer_SOURCE
 "src/ResourceTracker.cpp"
 "src/mikktspace.c"
 "src/MeshTracker.cpp"
+"src/FSR2.cpp"
 ${IMGUI_SOURCE_FILES}
 ${IMPLOT_SOURCE_FILES}
 )
@@ -105,6 +106,7 @@ target_include_directories(Renderer PUBLIC
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/cimgui
     ${CMAKE_CURRENT_SOURCE_DIR}/DirectXTK12/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/FSR2/include
 )
 target_include_directories(
     Renderer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/cimgui/imgui
@@ -121,6 +123,18 @@ target_link_libraries(Renderer
     RT_CORE
     "${CMAKE_CURRENT_SOURCE_DIR}/DXC/lib/x64/dxcompiler.lib"
 )
+
+if(CMAKE_BUILD_TYPE MATCHES Debug)
+target_link_libraries(Renderer
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_x64d.lib"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_dx12_x64d.lib"
+)
+elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo OR CMAKE_BUILD_TYPE MATCHES Release)
+target_link_libraries(Renderer
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_x64.lib"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FSR2/lib/x64/ffx_fsr2_api_dx12_x64.lib"
+)
+endif()
 
 add_custom_command(TARGET Renderer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

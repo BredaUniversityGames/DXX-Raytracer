@@ -120,6 +120,7 @@ static int title_handler(window *wind, d_event *event, title_screen *ts)
 
 		case EVENT_WINDOW_DRAW:
 #ifdef RT_DX12
+			RT_GetRendererIO()->delta_time = f2fl(FrameTime);
 			RT_BeginFrame();
 			RT_StartImGuiFrame();
 #endif
@@ -1138,6 +1139,7 @@ static int briefing_handler(window *wind, d_event *event, briefing *br)
 
 			if (raytrace_enemy)
 			{
+				RT_GetRendererIO()->delta_time = f2fl(FrameTime);
 				RT_BeginFrame();
 				RT_StartImGuiFrame();
 

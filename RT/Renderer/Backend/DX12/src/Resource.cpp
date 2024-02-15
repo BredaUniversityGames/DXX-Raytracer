@@ -174,8 +174,8 @@ namespace RT
 		heap_props.Type = D3D12_HEAP_TYPE_DEFAULT;
 
 		ID3D12Resource* texture;
-		g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, resource_desc,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, clear_value, IID_PPV_ARGS(&texture));
+		DX_CALL(g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, resource_desc,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, clear_value, IID_PPV_ARGS(&texture)));
 
 		texture->SetName(name);
 		g_d3d.resource_tracker.TrackObject(RT_RESOURCE_TRACKER_FWD_ARGS texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -202,8 +202,8 @@ namespace RT
 		resource_desc.Flags = flags;
 
 		ID3D12Resource* texture;
-		g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &resource_desc,
-			state, clear_value, IID_PPV_ARGS(&texture));
+		DX_CALL(g_d3d.device->CreateCommittedResource(&heap_props, D3D12_HEAP_FLAG_NONE, &resource_desc,
+			state, clear_value, IID_PPV_ARGS(&texture)));
 
 		texture->SetName(name);
 		g_d3d.resource_tracker.TrackObject(RT_RESOURCE_TRACKER_FWD_ARGS texture, state);

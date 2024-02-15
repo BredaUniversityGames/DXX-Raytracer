@@ -13,12 +13,11 @@ struct Reservoir
 	float w_sum;
 };
 
-void Update(inout Reservoir r, uint x_i, float w_i)
+void Update(inout Reservoir r, uint x_i, float w_i, uint2 pixel_pos)
 {
 	r.w_sum += w_i;
 	r.M     += 1;
-	uint2 co = DispatchRaysIndex().xy;
-	if (RandomSample(co, r.M) < (w_i / r.w_sum))
+	if (RandomSample(pixel_pos, r.M) < (w_i / r.w_sum))
 	{
 		r.y   = x_i;
 		r.w_y = w_i;
@@ -138,10 +137,8 @@ struct DirectLightingOutput
 	float3 emissive_lighting;
 };
 
-void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLightingOutput OUT, bool is_indirect)
+void CalculateDirectLightingAtSurface(in HitGeometry IN, inout DirectLightingOutput OUT, uint2 pixel_pos, bool is_indirect)
 {
-	uint2 co = DispatchRaysIndex().xy;
-
 	MaterialDesc material_desc = (MaterialDesc)0;
 	material_desc.ior = 0.04;
 	material_desc.albedo = IN.albedo;
@@ -153,7 +150,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 	if (HasHitGeometry(IN.vis_prim))
 	{
 		float3 unpacked_normal = DecodeNormalOctahedron(IN.normal);
-		float3 geo_world_p = IN.world_p; // ReconstructWorldPosFromGBuffer(co);
+		float3 geo_world_p = IN.world_p; // ReconstructWorldPosFromGBuffer(pixel_pos);
 
 		if (!(all(material_desc.albedo == 0) && material_desc.metallic == 1))
 		{
@@ -166,12 +163,12 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 			float2 rand;
 			if (is_indirect)
 			{
-				rand = IntegerHash(uint3(DispatchRaysIndex().xy, g_global_cb.frame_index)).xy;
+				rand = IntegerHash(uint3(pixel_pos, g_global_cb.frame_index)).xy;
 			}
 			else
 			{
-				rand.x = RandomSample(DispatchRaysIndex().xy, Random_DirectJitterX);
-				rand.y = RandomSample(DispatchRaysIndex().xy, Random_DirectJitterY);
+				rand.x = RandomSample(pixel_pos, Random_DirectJitterX);
+				rand.y = RandomSample(pixel_pos, Random_DirectJitterY);
 			}
 
 			if (tweak.ris && (!is_indirect || tweak.ris_indirect))
@@ -193,7 +190,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 						float3 c = s.e*NoL;
 						float3 e = c*brdf_diffuse + c*brdf_specular;
 
-						Update(r, light_index, Luminance(e));
+						Update(r, light_index, Luminance(e), pixel_pos);
 					}
 
 					W = r.w_y > 0.001 ? rcp(r.w_y)*r.w_sum : 0.0;
@@ -202,7 +199,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 				{
 					for (uint sample_index = 0; sample_index < min(tweak.ris_spp, lights_count); sample_index++)
 					{
-						uint light_index = min((uint)(lights_count*RandomSample(co, Random_PickLight + 3*sample_index)), lights_count - 1);
+						uint light_index = min((uint)(lights_count*RandomSample(pixel_pos, Random_PickLight + 3*sample_index)), lights_count - 1);
 
 						RT_Light l = g_lights[light_index];
 
@@ -217,7 +214,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 						float3 c = s.e*NoL;
 						float3 e = c*brdf_diffuse + c*brdf_specular;
 
-						Update(r, light_index, Luminance(e));
+						Update(r, light_index, Luminance(e), pixel_pos);
 					}
 
 					W = r.w_y > 0.001 ? lights_count*rcp(r.w_y)*rcp(r.M)*r.w_sum : 0.0;
@@ -225,7 +222,7 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 			}
 			else
 			{
-				r.y = min((uint)(lights_count*RandomSample(co, Random_PickLight)), lights_count - 1);
+				r.y = min((uint)(lights_count*RandomSample(pixel_pos, Random_PickLight)), lights_count - 1);
 				W = lights_count;
 			}
 
@@ -245,9 +242,9 @@ void CalculateDirectLightingAtSurface(in GeometryRayOutput IN, inout DirectLight
 				OcclusionRayPayload occlusion_payload;
 				occlusion_payload.visible = false;
 
-				TraceOcclusionRay(occlusion_ray, occlusion_payload);
+				TraceOcclusionRay(occlusion_ray, occlusion_payload, pixel_pos);
 
-				float3 c = occlusion_payload.visible*ndotl*s.e*W;
+				float3 c = occlusion_payload.visible * ndotl * s.e * W;
 
 				float3 brdf_diffuse, brdf_specular;
 				EvaluateBRDF(-IN.view_dir, unpacked_normal, s.L, material_desc, brdf_diffuse, brdf_specular);

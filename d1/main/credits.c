@@ -43,6 +43,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "config.h"
 #include "logger.h"
 
+#ifdef RT_DX12
+#include "Renderer.h"
+#endif
+
 #define ROW_SPACING			(SHEIGHT / 17)
 #define NUM_LINES			20 //14
 #define CREDITS_FILE 			"credits.tex"
@@ -125,6 +129,7 @@ int credits_handler(window *wind, d_event *event, credits *cr)
 			}
 
 #ifdef RT_DX12
+			RT_GetRendererIO()->delta_time = f2fl(FrameTime);
 			RT_BeginFrame();
 			RT_StartImGuiFrame();
 #endif

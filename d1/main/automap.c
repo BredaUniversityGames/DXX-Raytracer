@@ -584,6 +584,7 @@ int automap_handler(window *wind, d_event *event, automap *am)
 			
 		case EVENT_WINDOW_DRAW:
 #ifdef RT_DX12
+			RT_GetRendererIO()->delta_time = f2fl(FrameTime);
 			RT_BeginFrame();
 			RT_StartImGuiFrame();
 #endif

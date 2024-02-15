@@ -10,6 +10,11 @@
 // ------------------------------------------------------------------
 // Defines, constants, etc
 
+// If RT_DISPATCH_RAYS is 1, DXX-Raytracer will use the DXR DispatchRays API with shader tables to do the raytracing
+// If RT_DISPATCH_RAYS is 0 (and therefore RT_INLINE_RAYTRACING is 1), DXX-Raytracer will use the DXR Inline Raytracing API instead
+#define RT_DISPATCH_RAYS 0
+#define RT_INLINE_RAYTRACING !RT_DISPATCH_RAYS
+
 #define RT_PIXEL_DEBUG 0 // TODO(daniel): Make this be dependent on the build configuration and make it stand out in the GPU profiler so you can tell it apart from actual work
 #define GROUP_X 16
 #define GROUP_Y 16
@@ -70,20 +75,22 @@ struct GlobalConstantBuffer
 	float4x4 prev_proj_inv;
 
 	float2   taa_jitter;
+	int2	 output_dim;
 
 	int2     render_dim;
 	uint     frame_index;
 	uint     debug_flags;
-	uint     debug_render_mode;
-	uint     lights_count;
 
 	// Color overlay for being shot at or picking up items.
 	float4	 screen_color_overlay;
 
-    // Viewport offset, effectively offsets the center of the viewport after projecting
-    float    viewport_offset_y;
-    float3   sky_color_top;
-    float3   sky_color_bottom;
+	uint     debug_render_mode;
+	float3   sky_color_top;
+	float3   sky_color_bottom;
+	uint     lights_count;
+
+	// Viewport offset, effectively offsets the center of the viewport after projecting
+	float    viewport_offset_y;
 };
 
 struct GenMipMapSettings
@@ -107,6 +114,13 @@ struct PixelDebugData
 
 // ------------------------------------------------------------------
 // Tweak-vars: Struct generation
+
+enum UpscalingAAMode
+{
+	UPSCALING_AA_MODE_OFF,
+	UPSCALING_AA_MODE_TAA,
+	UPSCALING_AA_MODE_AMD_FSR_2_2
+};
 
 #define TWEAK_CATEGORY_BEGIN(name)
 #define TWEAK_CATEGORY_END()

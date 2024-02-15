@@ -20,6 +20,11 @@
 #include "vers_id.h"
 #include "timer.h"
 
+#ifdef RT_DX12
+#include "Renderer.h"
+#include "game.h"
+#endif
+
 static PHYSFS_file *gamelog_fp=NULL;
 static struct console_buffer con_buffer[CON_LINES_MAX];
 static int con_state = CON_STATE_CLOSED, con_scroll_offset = 0, con_size = 0;
@@ -176,7 +181,8 @@ static int con_handler(window *wind, d_event *event)
 				window_close(wind);
 
 #ifdef RT_DX12
-				RT_BeginFrame();
+			RT_GetRendererIO()->delta_time = f2fl(FrameTime);
+			RT_BeginFrame();
 			RT_StartImGuiFrame();
 #endif
 

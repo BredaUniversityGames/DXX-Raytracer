@@ -125,6 +125,7 @@ typedef struct RT_RendererIO
 	bool scene_transition; // set to true on a frame where there is a jumpcut or scene transition to avoid ghosting
 	bool debug_line_depth_enabled;
 	RT_Vec4 screen_overlay_color;
+	float delta_time;
 
 	// in/out:
 	int debug_render_mode;
@@ -247,6 +248,7 @@ typedef enum RT_MaterialFlags
 	RT_MaterialFlag_BlackbodyRadiator = 0x1, // things like lava, basically just treats the albedo as an emissive map and skips all shading
 	RT_MaterialFlag_NoCastingShadow   = 0x2,
 	RT_MaterialFlag_Light             = 0x4,
+	RT_MaterialFlag_Fsr2ReactiveMask  = 0x8
 } RT_MaterialFlags;
 
 typedef enum RT_MaterialTextureSlot

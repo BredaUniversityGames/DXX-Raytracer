@@ -19,14 +19,13 @@ TWEAK_BOOL("Vsync", vsync, true)
 
 TWEAK_CATEGORY_BEGIN("Camera");
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_FLOAT  ("FOV",					   fov,						  60.0,		60.0, 90.0)
+TWEAK_FLOAT  ("FOV",					   fov,						  60.0,		60.0, 120.0)
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END();
 
 TWEAK_CATEGORY_BEGIN("Pathtracer")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
 TWEAK_BOOL   ("Freezeframe",               freezeframe,               false)
-TWEAK_BOOL   ("Reference Mode",            reference_mode,            false)
 TWEAK_BOOL   ("Enable PBR",                enable_pbr,                true)
 TWEAK_BOOL   ("Enable Pathtracing",        enable_pathtracing,        true)
 TWEAK_COLOR  ("Ambient Color",             ambient_color,             (0.05f, 0.07f, 0.1f))
@@ -76,9 +75,17 @@ TWEAK_BOOL   ("Anti-Lag",                   svgf_antilag,              true)
 TWEAK_CATEGORY_END()
 
 
+TWEAK_CATEGORY_BEGIN("Upscaling & Anti-aliasing")
+// ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
+TWEAK_OPTIONS("Upscaling & AA mode", upscaling_aa_mode, 1, "Off", "TAA", "AMD FSR 2.2")
+TWEAK_OPTIONS("FSR2 mode", amd_fsr2_mode, 1, "No Upscaling", "Quality", "Balanced", "Performance", "Ultra performance")
+TWEAK_FLOAT("Reactive scale", amd_fsr2_reactive_scale,				  0.05,		0.0,  1.0)
+// ------------------------------------------------------------------------------------------------------------------
+TWEAK_CATEGORY_END();
+
+
 TWEAK_CATEGORY_BEGIN("TAA")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_BOOL   ("Enabled",                   taa_enabled,               true)
 TWEAK_BOOL   ("Per-pixel Jitter",          taa_per_pixel_jitter,      false)
 TWEAK_OPTIONS("Neighborhood Mode",         taa_neighborhood_mode,     TaaNeighborhoodMode_VarianceClip, "Off", "Clamp", "Clip", "Variance Clip")
 TWEAK_BOOL   ("Tonemapped Blend",          taa_tonemapped_blend,      true)
@@ -134,7 +141,8 @@ TWEAK_CATEGORY_END()
 
 TWEAK_CATEGORY_BEGIN("Mipmaps")
 // ---------- name ----------------------- variable ----------------- default - min - max ---------------------------
-TWEAK_INT    ("Mip Bias",				   mip_bias,				  -1,		-10,  10)
+TWEAK_FLOAT    ("Mip Bias U",			   mip_bias_u,				  -1.0,		-10.0,  10.0)
+TWEAK_FLOAT    ("Mip Bias V",			   mip_bias_v,				  -1.0,		-10.0,  10.0)
 TWEAK_FLOAT  ("Secondary bounce bias",	   secondary_bounce_bias,	  0.0005,	0.00001, 1.0)
 TWEAK_FLOAT  ("Angle cutoff",			   angle_cutoff,			  0.125,    0.0000001, 1.0)
 // ------------------------------------------------------------------------------------------------------------------

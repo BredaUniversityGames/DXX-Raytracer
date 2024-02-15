@@ -1,3 +1,7 @@
+fsr2_reactive_mask = 1
+blackbody = 0
+is_light = 0
 albedo_texture = mntr04_basecolor.png
-metalness_texture = mntr04_metallic.png
+no_casting_shadow = 0
 roughness_texture = mntr04_roughness.png
+metalness_texture = mntr04_metallic.png

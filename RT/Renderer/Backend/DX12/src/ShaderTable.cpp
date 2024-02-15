@@ -2,6 +2,7 @@
 #include "Resource.h"
 #include "GlobalDX.h"
 
+#if RT_DISPATCH_RAYS
 namespace RT
 {
 	ShaderTable CreateShaderTable(const wchar_t* name, size_t num_records, size_t stride)
@@ -48,3 +49,4 @@ namespace RT
 	}
 
 }
+#endif

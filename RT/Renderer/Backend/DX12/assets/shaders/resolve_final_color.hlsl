@@ -17,14 +17,13 @@ groupshared float3 shared_color[SHARED_Y][SHARED_X];
 
 void Preload(uint2 shared_pos, uint2 global_pos)
 {
-	shared_color[shared_pos.y][shared_pos.x] = img_color[global_pos].rgb;
+	shared_color[shared_pos.y][shared_pos.x] = img_postfx[global_pos].rgb;
 }
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
 void ResolveFinalColorCS(COMPUTE_ARGS)
 {
 	PRELOAD_INTO_SHARED
-	EARLY_OUT
 
 	float3 color = shared_color[thread_pos.y + BORDER][thread_pos.x + BORDER];
 
@@ -61,5 +60,5 @@ void ResolveFinalColorCS(COMPUTE_ARGS)
 	dither_noise = dither_noise.rgb - dither_noise.gbr;
 	color += dither_noise / 255.0;
 
-	img_scene[pixel_pos] = float4(color, 1);
+	img_resolve[pixel_pos] = float4(color, 1);
 }
