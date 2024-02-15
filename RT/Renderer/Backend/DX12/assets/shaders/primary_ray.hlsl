@@ -111,8 +111,7 @@ void PrimaryRaygen()
 	if (tweak.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
 	{
 	    // Determine if the pixel should write to the reactive mask for FSR2
-        uint reactive_mask_value = g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask || g_materials[geo.material_index].flags & RT_MaterialFlag_Light;
-	    img_fsr2_reactive_mask[pixel_pos] = float(reactive_mask_value) * tweak.amd_fsr2_reactive_scale;
+	    img_fsr2_reactive_mask[pixel_pos] = float(g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask) * tweak.amd_fsr2_reactive_scale;
     }
 
 #if RT_PIXEL_DEBUG
