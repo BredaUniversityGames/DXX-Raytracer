@@ -2733,6 +2733,8 @@ void RenderBackend::DoDebugMenus(const RT_DoRendererDebugMenuParams *params)
 			}
 
 			ImGui::Text("Frame Index: %llu", g_d3d.accum_frame_index);
+			ImGui::Text("Output resolution: %ux%u", g_d3d.output_width, g_d3d.output_height);
+			ImGui::Text("Render resolution: %ux%u", g_d3d.render_width, g_d3d.render_height);
 
 			int current_render_mode = g_d3d.io.debug_render_mode;
 
