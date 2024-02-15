@@ -81,8 +81,11 @@ void PrimaryRayInline(COMPUTE_ARGS)
 	img_visibility_prim[pixel_pos] = geo.vis_prim;
 	img_visibility_bary[pixel_pos] = geo.vis_bary;
 
-	// Determine if the pixel should write to the reactive mask for FSR2
-	img_fsr2_reactive_mask[pixel_pos] = float(g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask) * tweak.amd_fsr2_reactive_scale;
+	if (tweak.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+	{
+		// Determine if the pixel should write to the reactive mask for FSR2
+		img_fsr2_reactive_mask[pixel_pos] = float(g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask) * tweak.amd_fsr2_reactive_scale;
+	}
 
 #if RT_PIXEL_DEBUG
     // Write pixel debug data

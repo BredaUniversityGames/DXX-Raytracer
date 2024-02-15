@@ -51,6 +51,7 @@ struct RT_MaterialViewer
 	bool highlight_blackbodies;
 	bool highlight_no_casting_shadows;
 	bool highlight_lights;
+	bool highlight_fsr2_reactive_mask;
 	bool highlight_has_normal_map;
 	bool highlight_has_metalness_map;
 	bool highlight_has_roughness_map;
@@ -613,6 +614,7 @@ void RT_DoMaterialViewerMenus()
 				ImGui::Checkbox("Highlight: Is Blackbody", &viewer.highlight_blackbodies);
 				ImGui::Checkbox("Highlight: Not casting shadows", &viewer.highlight_no_casting_shadows);
 				ImGui::Checkbox("Highlight: Is Light", &viewer.highlight_lights);
+				ImGui::Checkbox("Highlight: FSR2 reactive mask", &viewer.highlight_fsr2_reactive_mask);
 				ImGui::Checkbox("Highlight: Has Normal Map", &viewer.highlight_has_normal_map);
 				ImGui::Checkbox("Highlight: Has Metalness Map", &viewer.highlight_has_metalness_map);
 				ImGui::Checkbox("Highlight: Has Roughness Map", &viewer.highlight_has_roughness_map);
@@ -684,6 +686,7 @@ void RT_DoMaterialViewerMenus()
 				{
 					if (viewer.highlight_blackbodies && !is_blackbody) rejected_by_filter = true;
 					if (viewer.highlight_no_casting_shadows && !is_no_casting_shadow) rejected_by_filter = true;
+					if (viewer.highlight_fsr2_reactive_mask && !is_fsr2_reactive_mask) rejected_by_filter = true;
 					if (viewer.highlight_lights && !is_light) rejected_by_filter = true;
 					if (viewer.highlight_has_normal_map && !has_normal) rejected_by_filter = true;
 					if (viewer.highlight_has_metalness_map && !has_metalness) rejected_by_filter = true;
@@ -833,6 +836,11 @@ void RT_DoMaterialViewerMenus()
 				}
 
 				if (viewer.highlight_lights && is_light)
+				{
+					draw_list->AddRect(img_min, img_max, ImColor(1.0f, 1.0f, 0.0f, 0.25f));
+				}
+
+				if (viewer.highlight_fsr2_reactive_mask && is_fsr2_reactive_mask)
 				{
 					draw_list->AddRect(img_min, img_max, ImColor(1.0f, 1.0f, 0.0f, 0.25f));
 				}

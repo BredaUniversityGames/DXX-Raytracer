@@ -4206,7 +4206,7 @@ void RenderBackend::RaytraceRender()
 			FSR2::Dispatch(command_list,
 				g_d3d.rt.color, g_d3d.rt.depth, g_d3d.rt.motion, g_d3d.rt.fsr2_reactive_mask, g_d3d.render_targets[rt_taa_result[a]],
 				g_d3d.render_width, g_d3d.render_height, scene_cb->taa_jitter.x, scene_cb->taa_jitter.y,
-				g_d3d.scene.camera.near_plane, g_d3d.scene.camera.far_plane, g_d3d.scene.camera.vfov,
+				g_d3d.scene.camera.near_plane, g_d3d.scene.camera.far_plane, RT_RadiansFromDegrees(g_d3d.scene.camera.vfov),
 				g_d3d.io.delta_time * 1000.0f, g_d3d.io.scene_transition
 			);
 
