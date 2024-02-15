@@ -1115,6 +1115,7 @@ int game_handler(window *wind, d_event *event, void *data)
 			}
 
 #ifdef RT_DX12
+			RT_GetRendererIO()->delta_time = f2fl(FrameTime);
 			RT_BeginFrame();
 			RT_StartImGuiFrame();
 #endif

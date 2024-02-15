@@ -1330,23 +1330,28 @@ int raytrace_config_menuset(newmenu *menu, d_event *event, void *userdata)
 
 void raytrace_config()
 {
-	newmenu_item m[30];
+	newmenu_item m[50];
 	int nitems = 0;
 
+	int opt_gr_vsync = 0;
+
 	// Pathtracing ops
-	int opt_gr_enable_pathtracing = 0, opt_gr_enable_pbr, opt_gr_important_sample_brdf, opt_gr_lighting_quality;
+	int opt_gr_enable_pathtracing = 0, opt_gr_enable_pbr = 0, opt_gr_important_sample_brdf = 0, opt_gr_lighting_quality = 0;
+
+	// TAA & AMD FSR 2.2 ops
+	int opt_gr_upscaling_aa_mode = 0,opt_gr_amd_fsr2_mode = 0;
 
 	// Motion Blur ops
-	int opt_gr_motion_blur_quality = 0, opt_gr_motion_blur_strength;
+	int opt_gr_motion_blur_quality = 0, opt_gr_motion_blur_strength = 0;
 
 	// Bloom ops
-	int opt_gr_bloom_amount = 0, opt_gr_bloom_threshold;
+	int opt_gr_bloom_amount = 0, opt_gr_bloom_threshold = 0;
 
 	// FOV
 	int opt_gr_fov = 0;
 
 	// Post Processing ops
-	int opt_gr_sharpen_amount = 0, opt_gr_gamma, opt_gr_vignette_scale, opt_gr_vignette_strength;
+	int opt_gr_sharpen_amount = 0, opt_gr_gamma = 0, opt_gr_vignette_scale = 0, opt_gr_vignette_strength = 0;
 
 	RT_RendererIO* io = RT_GetRendererIO();
 	RT_Config* config = io->config;
@@ -1357,26 +1362,54 @@ void raytrace_config()
 	opt_gr_change_preset = nitems;
 	m[nitems].type = NM_TYPE_MENU; m[nitems].text = " Use Preset"; nitems++;
 
+	// --- VSync ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	opt_gr_vsync = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "VSync";  m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("vsync")); nitems++;
+
 	// --- PATHTRACING ---
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Pathtracing:"; nitems++;
 
 	opt_gr_enable_pathtracing = nitems;
-	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable Pathtracing"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pathtracing")); nitems++;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable pathtraced GI"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pathtracing")); nitems++;
 
 	opt_gr_enable_pbr = nitems;
-	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable PBR"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pbr")); nitems++;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Enable physically-based rendering"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_pbr")); nitems++;
 
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Lighting Quality:"; nitems++;
 	opt_gr_lighting_quality = nitems;
-	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Low"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
-	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Medium"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
-	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " High"; m[nitems].value = 0; m[nitems].group = 0; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Low"; m[nitems].value = 0; m[nitems].group = opt_gr_lighting_quality; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Medium"; m[nitems].value = 0; m[nitems].group = opt_gr_lighting_quality; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " High"; m[nitems].value = 0; m[nitems].group = opt_gr_lighting_quality; nitems++;
 	int lighting_mode = RT_GetIntFromConfig(config, RT_StringLiteral("ris"));
-	m[opt_gr_lighting_quality+lighting_mode].value=1;
+	m[opt_gr_lighting_quality+lighting_mode].value = 1;
 
 	int opt_gr_bilinear = nitems;
 	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Smooth Textures"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("smooth_textures")); nitems++;
+
+	// --- TAA & AMD FSR 2.2 ---
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "Upscaling & Anti-aliasing:"; nitems++;
+	opt_gr_upscaling_aa_mode = nitems;
+
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Off"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " TAA"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " AMD FSR 2.2"; m[nitems].value = 0; m[nitems].group = opt_gr_upscaling_aa_mode; nitems++;
+	int upscaling_aa_mode = RT_GetIntFromConfig(config, RT_StringLiteral("upscaling_aa_mode"));
+	m[opt_gr_upscaling_aa_mode + upscaling_aa_mode].value = 1;
+
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "AMD FSR mode:"; nitems++;
+	opt_gr_amd_fsr2_mode = nitems;
+
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " No Upscaling"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Quality"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Balanced"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Performance"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
+	m[nitems].type = NM_TYPE_RADIO; m[nitems].text = " Ultra performance"; m[nitems].value = 0; m[nitems].group = opt_gr_amd_fsr2_mode; nitems++;
+	int amd_fsr2_mode = RT_GetIntFromConfig(config, RT_StringLiteral("amd_fsr2_mode"));
+	m[opt_gr_amd_fsr2_mode + amd_fsr2_mode].value = 1;
 
 	// --- MOTION BLUR ---
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
@@ -1397,7 +1430,7 @@ void raytrace_config()
 
 	// --- FOV ---
 	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = ""; nitems++;
-	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "FOV:"; nitems++;
+	m[nitems].type = NM_TYPE_TEXT; m[nitems].text = "FOV (60 - 120):"; nitems++;
 
 	opt_gr_fov = nitems;
 	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Amount"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("fov"))) - 60; m[nitems].min_value = 0; m[nitems].max_value = 30; nitems++;
@@ -1434,10 +1467,14 @@ void raytrace_config()
 	RT_SaveHeadLightSettings();
 
 	if (!preset_changed){
+		RT_ConfigWriteInt(config, RT_StringLiteral("vsync"), m[opt_gr_vsync].value);
+
 		RT_ConfigWriteInt(config, RT_StringLiteral("enable_pathtracing"), m[opt_gr_enable_pathtracing].value);
 		RT_ConfigWriteInt(config, RT_StringLiteral("enable_pbr"), m[opt_gr_enable_pbr].value);
-		for(int i = 0; i < 3; i++){
-			if(m[opt_gr_lighting_quality+i].value == 1){
+		for(int i = 0; i < 3; i++)
+		{
+			if(m[opt_gr_lighting_quality+i].value == 1)
+			{
 				lighting_mode = i;
 			}
 		}
@@ -1467,6 +1504,21 @@ void raytrace_config()
 		}
 
 		RT_ConfigWriteInt(config, RT_StringLiteral("ris"), lighting_mode);
+
+		for (int i = 0; i < 3; i++)
+		{
+			if (m[opt_gr_upscaling_aa_mode + i].value == 1)
+			{
+				RT_ConfigWriteInt(config, RT_StringLiteral("upscaling_aa_mode"), i);
+			}
+		}
+		for (int i = 0; i < 4; i++)
+		{
+			if (m[opt_gr_amd_fsr2_mode + i].value == 1)
+			{
+				RT_ConfigWriteInt(config, RT_StringLiteral("amd_fsr2_mode"), i);
+			}
+		}
 
 		if (m[opt_gr_bilinear].value)
 		{
@@ -1628,8 +1680,8 @@ void graphics_config()
 
 	if(PlayerCfg.maxFps < 25) {
 		PlayerCfg.maxFps = 25;
-	} else if (PlayerCfg.maxFps > 200) {
-		PlayerCfg.maxFps = 200; 
+	} else if (PlayerCfg.maxFps > 999) {
+		PlayerCfg.maxFps = 999; 
 	}
 
 #ifdef OGL

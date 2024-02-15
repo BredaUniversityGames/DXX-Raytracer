@@ -1,7 +1,8 @@
 #ifndef INDIRECT_LIGHTING_HLSL
 #define INDIRECT_LIGHTING_HLSL
 
-#include "direct_lighting.hlsl"
+#include "primary_ray.hlsli"
+#include "direct_lighting.hlsli"
 
 [shader("raygeneration")]
 void IndirectLightingRaygen()
@@ -10,6 +11,7 @@ void IndirectLightingRaygen()
 	// Compute indirect lighting
 
 	uint2 dispatch_idx = DispatchRaysIndex().xy;
+	uint2 dispatch_dim = DispatchRaysDimensions().xy;
 
 	// Get G-buffer values
 	float3 gbuf_albedo                = img_albedo[dispatch_idx].xyz;
@@ -162,32 +164,35 @@ void IndirectLightingRaygen()
 
 			// Set up geometry input for primary ray trace
 			PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
-			RayDesc ray_desc   = (RayDesc)0;
-			ray_desc.Origin    = gbuf_world_p + 0.01f * gbuf_normal;
-			ray_desc.Direction = bounce_direction;
-			ray_desc.TMin      = RT_RAY_T_MIN;
-			ray_desc.TMax      = RT_RAY_T_MAX;
+			RayDesc ray   = (RayDesc)0;
+			ray.Origin    = gbuf_world_p + 0.01f * gbuf_normal;
+			ray.Direction = bounce_direction;
+			ray.TMin      = RT_RAY_T_MIN;
+			ray.TMax      = RT_RAY_T_MAX;
 
 			// Trace the primary ray
-			TracePrimaryRay(ray_desc, ray_payload);
+			TracePrimaryRay(ray, ray_payload, dispatch_idx);
 
 			// Set up geometry output from primary ray trace and set non-zero defaults where necessary
-			GeometryRayOutput geo_ray_output = (GeometryRayOutput)0;
+			HitGeometry geo = (HitGeometry)0;
 
 			// Get geometry data from primary ray trace
-			GetGeometryDataFromPrimaryRay(ray_desc, ray_payload, 1, geo_ray_output);
-			geo_ray_output.world_p = gbuf_world_p + ray_payload.hit_distance*bounce_direction;
+			GetHitGeometryFromRay(ray,
+				ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
+				0, dispatch_idx, dispatch_dim, geo
+			);
+			geo.world_p = gbuf_world_p + ray_payload.hit_distance * bounce_direction;
 
 			// Set up direct lighting output
 			DirectLightingOutput direct_lighting_output = (DirectLightingOutput)0;
 
-			CalculateDirectLightingAtSurface(geo_ray_output, direct_lighting_output, true);
+			CalculateDirectLightingAtSurface(geo, direct_lighting_output, dispatch_idx, true);
 
 			// TODO(daniel): Fetching the material again? Should be optimized away by the compiler
-			Material material = g_materials[geo_ray_output.material_index];
+			Material material = g_materials[geo.material_index];
 
 			float3 indirect_color;
-			if (HasHitGeometry(geo_ray_output.vis_prim))
+			if (HasHitGeometry(geo.vis_prim))
 			{
 				float direct_light_specular_weight = 1.0f;
 
@@ -195,7 +200,7 @@ void IndirectLightingRaygen()
 				{
 					direct_light_specular_weight = saturate(1.0 - smoothstep(tweak.direct_specular_threshold - 0.1,
 																			 tweak.direct_specular_threshold,
-																			 geo_ray_output.roughness));
+																			 geo.roughness));
 				}
 
 				indirect_color = (direct_lighting_output.albedo*direct_lighting_output.direct_lighting + 
@@ -203,11 +208,11 @@ void IndirectLightingRaygen()
 
 				if (specular_bounce)
 				{
-					indirect_color += direct_light_specular_weight*geo_ray_output.emissive;
+					indirect_color += direct_light_specular_weight*geo.emissive;
 				}
 				else // if(!(material.flags & RT_MaterialFlag_Light)) // This would be more correct stopping the double counting of lights. But in practice I think it just looks darker but not better, so meh.
 				{
-					indirect_color += geo_ray_output.emissive;
+					indirect_color += geo.emissive;
 				}
 			}
 			else
@@ -219,7 +224,7 @@ void IndirectLightingRaygen()
 			float3 indirect_specular = indirect_color*specular_throughput;
 			float3 indirect_diffuse  = indirect_color*diffuse_throughput;
 
-			if (!tweak.reference_mode && tweak.svgf_enabled)
+			if (tweak.svgf_enabled)
 			{
 				indirect_specular *= rcp(lerp(0.04, 0.01 + gbuf_albedo, gbuf_metallic));
 			}

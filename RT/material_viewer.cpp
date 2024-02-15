@@ -51,6 +51,7 @@ struct RT_MaterialViewer
 	bool highlight_blackbodies;
 	bool highlight_no_casting_shadows;
 	bool highlight_lights;
+	bool highlight_fsr2_reactive_mask;
 	bool highlight_has_normal_map;
 	bool highlight_has_metalness_map;
 	bool highlight_has_roughness_map;
@@ -448,6 +449,7 @@ static void SaveIfModified(uint16_t bm_index)
 			RT_ConfigWriteInt(&cfg, RT_StringLiteral("blackbody"), !!(material->flags & RT_MaterialFlag_BlackbodyRadiator));
 			RT_ConfigWriteInt(&cfg, RT_StringLiteral("no_casting_shadow"), !!(material->flags & RT_MaterialFlag_NoCastingShadow));
 			RT_ConfigWriteInt(&cfg, RT_StringLiteral("is_light"), !!(material->flags & RT_MaterialFlag_Light));
+			RT_ConfigWriteInt(&cfg, RT_StringLiteral("fsr2_reactive_mask"), !!(material->flags & RT_MaterialFlag_Fsr2ReactiveMask));
 		}
 
 		char bitmap_name[13];
@@ -612,6 +614,7 @@ void RT_DoMaterialViewerMenus()
 				ImGui::Checkbox("Highlight: Is Blackbody", &viewer.highlight_blackbodies);
 				ImGui::Checkbox("Highlight: Not casting shadows", &viewer.highlight_no_casting_shadows);
 				ImGui::Checkbox("Highlight: Is Light", &viewer.highlight_lights);
+				ImGui::Checkbox("Highlight: FSR2 reactive mask", &viewer.highlight_fsr2_reactive_mask);
 				ImGui::Checkbox("Highlight: Has Normal Map", &viewer.highlight_has_normal_map);
 				ImGui::Checkbox("Highlight: Has Metalness Map", &viewer.highlight_has_metalness_map);
 				ImGui::Checkbox("Highlight: Has Roughness Map", &viewer.highlight_has_roughness_map);
@@ -673,6 +676,7 @@ void RT_DoMaterialViewerMenus()
 				bool is_blackbody = (material->flags & RT_MaterialFlag_BlackbodyRadiator);
 				bool is_no_casting_shadow = (material->flags & RT_MaterialFlag_NoCastingShadow);
 				bool is_light = (material->flags & RT_MaterialFlag_Light);
+				bool is_fsr2_reactive_mask = (material->flags & RT_MaterialFlag_Fsr2ReactiveMask);
 				bool has_normal = RT_RESOURCE_HANDLE_VALID(material->normal_texture);
 				bool has_metalness = RT_RESOURCE_HANDLE_VALID(material->metalness_texture);
 				bool has_roughness = RT_RESOURCE_HANDLE_VALID(material->roughness_texture);
@@ -682,6 +686,7 @@ void RT_DoMaterialViewerMenus()
 				{
 					if (viewer.highlight_blackbodies && !is_blackbody) rejected_by_filter = true;
 					if (viewer.highlight_no_casting_shadows && !is_no_casting_shadow) rejected_by_filter = true;
+					if (viewer.highlight_fsr2_reactive_mask && !is_fsr2_reactive_mask) rejected_by_filter = true;
 					if (viewer.highlight_lights && !is_light) rejected_by_filter = true;
 					if (viewer.highlight_has_normal_map && !has_normal) rejected_by_filter = true;
 					if (viewer.highlight_has_metalness_map && !has_metalness) rejected_by_filter = true;
@@ -831,6 +836,11 @@ void RT_DoMaterialViewerMenus()
 				}
 
 				if (viewer.highlight_lights && is_light)
+				{
+					draw_list->AddRect(img_min, img_max, ImColor(1.0f, 1.0f, 0.0f, 0.25f));
+				}
+
+				if (viewer.highlight_fsr2_reactive_mask && is_fsr2_reactive_mask)
 				{
 					draw_list->AddRect(img_min, img_max, ImColor(1.0f, 1.0f, 0.0f, 0.25f));
 				}
@@ -1017,6 +1027,20 @@ void RT_DoMaterialViewerMenus()
 				ImGui::EndTooltip();
 			}
 
+			bool is_fsr2_reactive_mask = first_material->flags & RT_MaterialFlag_Fsr2ReactiveMask;
+			bool is_fsr2_reactive_changed = ImGui::Checkbox("FSR2 Reactive Mask", &is_fsr2_reactive_mask);
+			active |= ImGui::IsItemActive();
+			ImGui::SameLine();
+			ImGui::TextDisabled("(?)");
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+			{
+				ImGui::BeginTooltip();
+				ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+				ImGui::TextUnformatted("Whether this material should write to the FSR2 reactive mask.");
+				ImGui::PopTextWrapPos();
+				ImGui::EndTooltip();
+			}
+
 			if (!flags_equal)
 				ImGui::PopStyleColor();
 
@@ -1151,6 +1175,7 @@ void RT_DoMaterialViewerMenus()
 			if (blackbody_changed ||
 				no_casting_shadow_changed ||
 				is_light_changed ||
+				is_fsr2_reactive_changed ||
 				metalness_changed ||
 				roughness_changed ||
 				emissive_changed)
@@ -1181,6 +1206,9 @@ void RT_DoMaterialViewerMenus()
 
 					if (is_light_changed)
 						material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_Light, is_light);
+
+					if (is_fsr2_reactive_changed)
+						material->flags = RT_SET_FLAG(material->flags, RT_MaterialFlag_Fsr2ReactiveMask, is_fsr2_reactive_mask);
 
 					if (metalness_changed)
 					{

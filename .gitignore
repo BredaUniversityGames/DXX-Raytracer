@@ -78,4 +78,5 @@ tags    # ctags files used with vim
 d1/assets/textures/noise
 
 # make sure to include DXC dlls
-!RT/Renderer/Backend/DX12/DXC/bin/*
+!RT/Renderer/Backend/DX12/DXC/bin/x64/dxcompiler.dll
+!RT/Renderer/Backend/DX12/DXC/bin/x64/dxil.dll

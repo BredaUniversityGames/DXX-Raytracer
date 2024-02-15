@@ -14,7 +14,6 @@
 #include "MeshTracker.hpp"
 #include "DescriptorArena.hpp"
 #include "RingBuffer.h"
-#include "ShaderTable.h"
 
 //------------------------------------------------------------------------	
 // Shared includes with HLSL
@@ -22,7 +21,12 @@
 #include "shared_common.hlsl.h"
 #include "shared_rendertargets.hlsl.h"
 
-//------------------------------------------------------------------------	
+#if RT_DISPATCH_RAYS
+#include "ShaderTable.h"
+#endif
+
+// Uncomment this to wait after each frame, effectively disabling triple buffering
+// #define RT_FORCE_HEAVY_SYNCHRONIZATION
 
 namespace RT
 {
@@ -32,7 +36,7 @@ namespace RT
 	class CommandQueue;
 
 	constexpr bool     GPU_VALIDATION_ENABLED   = false;
-	constexpr uint32_t BACK_BUFFER_COUNT		= 3;
+	constexpr uint32_t BACK_BUFFER_COUNT		= 2;
 	constexpr uint32_t MAX_INSTANCES			= 1000;
 	constexpr uint32_t MAX_BOTTOM_LEVELS		= 1000;
 	constexpr uint32_t HALTON_SAMPLE_COUNT      = 128;
@@ -41,6 +45,7 @@ namespace RT
 	constexpr uint32_t MAX_DEBUG_LINES_WORLD	= 5000;
 	constexpr uint32_t CBV_SRV_UAV_HEAP_SIZE	= 65536;
 
+#if RT_DISPATCH_RAYS
 	struct RaytracingShader
 	{
 		const wchar_t *source_file;
@@ -81,6 +86,37 @@ namespace RT
 		ID3D12StateObject *pso;
 		ID3D12StateObjectProperties *pso_properties;
 	};
+
+	struct PrimaryRayPayload
+	{
+		uint32_t instance_idx;
+		uint32_t primitive_idx;
+		RT_Vec2 barycentrics;
+		float hit_distance;
+	};
+
+	struct OcclusionRayPayload
+	{
+		uint32_t visible;
+	};
+
+	struct ShaderRecord
+	{
+		char identifier[D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES];
+	};
+
+	constexpr wchar_t* primary_raygen_export_name = L"PrimaryRayGen";
+	constexpr wchar_t* primary_closesthit_export_name = L"PrimaryClosestHit";
+	constexpr wchar_t* primary_anyhit_export_name = L"PrimaryAnyHit";
+	constexpr wchar_t* primary_miss_export_name = L"PrimaryMiss";
+	constexpr wchar_t* primary_hitgroup_export_name = L"PrimaryHitGroup";
+
+	constexpr wchar_t* direct_lighting_raygen_export_name = L"DirectLightingRaygen";
+	constexpr wchar_t* indirect_lighting_raygen_export_name = L"IndirectLightingRaygen";
+	constexpr wchar_t* occlusion_anyhit_export_name = L"OcclusionAnyhit";
+	constexpr wchar_t* occlusion_miss_export_name = L"OcclusionMiss";
+	constexpr wchar_t* occlusion_hitgroup_export_name = L"OcclusionHitGroup";
+#endif
 
 	struct ComputeShader
 	{
@@ -127,24 +163,6 @@ namespace RT
 		DescriptorAllocation rtv_descriptor;
 	};
 
-	struct PrimaryRayPayload
-	{
-		uint32_t instance_idx;
-		uint32_t primitive_idx;
-		RT_Vec2 barycentrics;
-		float hit_distance;
-	};
-
-	struct OcclusionRayPayload
-	{
-		uint32_t visible;
-	};
-
-	struct ShaderRecord
-	{
-		char identifier[D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES];
-	};
-
 	struct FrameData
 	{
 		uint64_t fence_value;
@@ -162,7 +180,6 @@ namespace RT
 		BufferAllocation material_edges;
 		BufferAllocation material_indices;
 
-		ShaderTable hitgroups_shader_table_upload;
 		ID3D12Resource *pixel_debug_readback;
 
 		UINT64 tlas_size, tlas_scratch_size; 
@@ -173,18 +190,6 @@ namespace RT
 		DescriptorAllocation non_shader_descriptors;
 	};
 
-	constexpr wchar_t* primary_raygen_export_name = L"PrimaryRayGen";
-	constexpr wchar_t* primary_closesthit_export_name = L"PrimaryClosestHit";
-	constexpr wchar_t* primary_anyhit_export_name = L"PrimaryAnyHit";
-	constexpr wchar_t* primary_miss_export_name = L"PrimaryMiss";
-	constexpr wchar_t* primary_hitgroup_export_name = L"PrimaryHitGroup";
-
-	constexpr wchar_t* direct_lighting_raygen_export_name = L"DirectLightingRaygen";
-	constexpr wchar_t* indirect_lighting_raygen_export_name = L"IndirectLightingRaygen";
-	constexpr wchar_t* occlusion_anyhit_export_name = L"OcclusionAnyhit";
-	constexpr wchar_t* occlusion_miss_export_name = L"OcclusionMiss";
-	constexpr wchar_t* occlusion_hitgroup_export_name = L"OcclusionHitGroup";
-
 	// TODO(daniel): Move these into the g_d3d struct, probably, but be wary of constructors preventing the default initialization
 	// of all the trivial types in D3DState.
 	extern RT::SlotMap<MeshResource> g_mesh_slotmap;
@@ -192,7 +197,7 @@ namespace RT
 
 	enum RenderTarget
 	{
-		#define RT_RENDER_TARGETS_DECLARE_ENUM(name, reg, scale_x, scale_y, type, format) \
+		#define RT_RENDER_TARGETS_DECLARE_ENUM(name, reg, scale_x, scale_y, output_res, type, format) \
 			RenderTarget_##name = reg,
 
 		RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_ENUM)
@@ -232,12 +237,12 @@ namespace RT
 		// ------------------------------------------------------------------
 		// Render targets
 
-#define RT_RENDER_TARGETS_DECLARE_UAVS(name, reg, scale_x, scale_y, type, format) \
+#define RT_RENDER_TARGETS_DECLARE_UAVS(name, reg, scale_x, scale_y, output_res, type, format) \
 	D3D12GlobalDescriptors_UAV_##name,
 
 		RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_UAVS)
 
-#define RT_RENDER_TARGETS_DECLARE_SRVS(name, reg, scale_x, scale_y, type, format) \
+#define RT_RENDER_TARGETS_DECLARE_SRVS(name, reg, scale_x, scale_y, output_res, type, format) \
 	D3D12GlobalDescriptors_SRV_##name,
 
 		RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_SRVS)
@@ -311,9 +316,15 @@ namespace RT
 
 		CommandQueue* command_queue_direct;
 
+		// The actual output resolution
+		uint32_t output_width;
+		uint32_t output_height;
+
+		// The resolution we render the frame at, might be upscaled to output resolution
 		uint32_t render_width;
 		uint32_t render_height;
 
+		// Override used by cockpit modes
 		uint32_t render_width_override;
 		uint32_t render_height_override;
        
@@ -331,6 +342,11 @@ namespace RT
 		ID3D12RootSignature* global_root_sig;
 
 		RT_Config global_shader_defines;
+
+#if RT_DISPATCH_RAYS
+		ID3D12Resource* raygen_shader_table;
+		ID3D12Resource* miss_shader_table;
+		ID3D12Resource* hitgroups_shader_table;
 
 		union
 		{
@@ -362,6 +378,19 @@ namespace RT
 
 			RaytracingPipeline rt_pipelines_all[sizeof(rt_pipelines) / sizeof(RaytracingPipeline)];
 		};
+#elif RT_INLINE_RAYTRACING
+		union
+		{
+			struct
+			{
+				ComputeShader primary_inline;
+				ComputeShader direct_lighting_inline;
+				ComputeShader indirect_lighting_inline;
+			} rt_shaders;
+
+			ComputeShader rt_shaders_all[sizeof(rt_shaders) / sizeof(ComputeShader)];
+		};
+#endif
 
 		ID3D12RootSignature* gen_mipmap_root_sig;
 
@@ -388,15 +417,11 @@ namespace RT
 			ComputeShader gen_mipmaps;
 		} cs;
 
-		ID3D12Resource* raygen_shader_table;
-		ID3D12Resource* miss_shader_table;
-		ID3D12Resource* hitgroups_shader_table;
-
 		union
 		{
 			struct
 			{
-				#define RT_RENDER_TARGETS_DECLARE_RESOURCES(name, reg, scale_x, scale_y, type, format) \
+				#define RT_RENDER_TARGETS_DECLARE_RESOURCES(name, reg, scale_x, scale_y, output_res, type, format) \
 					ID3D12Resource *name;
 
 				RT_RENDER_TARGETS(RT_RENDER_TARGETS_DECLARE_RESOURCES)
@@ -429,12 +454,14 @@ namespace RT
 
 			uint64_t last_camera_update_frame;
 			int freezeframe;
-
-			size_t hitgroups_table_at;
+			
 			bool render_blit;
 		} scene;
 
 		RingBuffer resource_upload_ring_buffer;
+
+		int upscaling_aa_mode;
+		int amd_fsr2_mode;
 	};
 
 	extern D3D12State g_d3d;
