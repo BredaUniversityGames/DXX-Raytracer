@@ -267,10 +267,10 @@ void dx12_loadbmtexture_f(grs_bitmap* bm, int texfilt)
 		uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, bm);
 
 		RT_UploadTextureParams tex_upload_params = {
-			.format = RT_TextureFormat_RGBA8,
-			.width = bm->dxtexture->w,
-			.height = bm->dxtexture->h,
-			.pixels = pixels,
+			.image.format = RT_TextureFormat_RGBA8,
+			.image.width = bm->dxtexture->w,
+			.image.height = bm->dxtexture->h,
+			.image.pixels = pixels,
 			.name = "UI texture"
 		};
 

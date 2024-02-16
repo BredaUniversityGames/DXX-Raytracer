@@ -74,11 +74,6 @@ RT_ResourceHandle RT_UploadTexture(const RT_UploadTextureParams* params)
 	return RenderBackend::UploadTexture(*params);
 }
 
-RT_ResourceHandle RT_UploadTextureDDS(const RT_UploadTextureParamsDDS* params)
-{
-	return RenderBackend::UploadTextureDDS(*params);
-}
-
 RT_ResourceHandle RT_GetDefaultWhiteTexture(void)
 {
 	return RenderBackend::GetDefaultWhiteTexture();

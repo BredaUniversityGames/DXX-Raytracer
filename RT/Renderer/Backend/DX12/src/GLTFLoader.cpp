@@ -143,30 +143,39 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path, RT_MaterialOverride*
 
 			MemoryScope image_temp;
 			
-			int w, h, n;
-			unsigned char *pixels = nullptr;
+			RT_Image loaded_image;
 
 			if (image->buffer_view)
 			{
 				unsigned char* src = GetBufferViewPointer<unsigned char>(image->buffer_view);
-				pixels = RT_LoadImageFromMemory(image_temp, src, image->buffer_view->size, &w, &h, &n, 4);
+				loaded_image = RT_LoadImageFromMemory(image_temp, src, image->buffer_view->size, 4, is_srgb);
 			}
 			else
 			{
 				char* image_path = CreatePathFromUri(image_temp, gltf_directory, image->uri);
-				pixels = RT_LoadImageFromDisk(image_temp, image_path, &w, &h, &n, 4);
+				loaded_image = RT_LoadImageFromDisk(image_temp, image_path, 4, is_srgb);
 			}
 
-			if (pixels)
+			if (loaded_image.pixels)
 			{
 				loaded_images[index]->uri = image->uri;
 
+				uint32_t w = loaded_image.width;
+				uint32_t h = loaded_image.height;
+
 				if (is_metallic_roughness)
 				{
+					if (loaded_image.format >= RT_TextureFormat_BC1 &&
+						loaded_image.format <= RT_TextureFormat_BC7_SRGB)
+					{
+						// Unfortunately, due to the combining below, we can't support DXT compressed textures for metallic roughness textures in GLTFs.
+						RT_FATAL_ERROR("DXT compressed textures are not supported for metallic roughness textures in GLTF models, for stupid reasons");
+					}
+
 					uint8_t *metalness = RT_ArenaAllocArrayNoZero(image_temp, w*h, uint8_t);
 					uint8_t *roughness = RT_ArenaAllocArrayNoZero(image_temp, w*h, uint8_t);
 
-					uint32_t *src = (uint32_t *)pixels;
+					uint32_t *src = (uint32_t *)loaded_image.pixels;
 					uint8_t *metalness_dst = metalness;
 					uint8_t *roughness_dst = roughness;
 
@@ -179,20 +188,20 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path, RT_MaterialOverride*
 
 					{
 						RT_UploadTextureParams params = {};
-						params.format = RT_TextureFormat_R8;
-						params.width  = (uint32_t)w;
-						params.height = (uint32_t)h;
-						params.pixels = (uint32_t *)metalness;
+						params.image.format = RT_TextureFormat_R8;
+						params.image.width  = (uint32_t)w;
+						params.image.height = (uint32_t)h;
+						params.image.pixels = metalness;
 						params.name   = RT_ArenaPrintF(image_temp, "%s (metalness)", image->uri);
 						loaded_images[index]->handle = RT_UploadTexture(&params);
 					}
 
 					{
 						RT_UploadTextureParams params = {};
-						params.format = RT_TextureFormat_R8;
-						params.width  = (uint32_t)w;
-						params.height = (uint32_t)h;
-						params.pixels = (uint32_t *)roughness;
+						params.image.format = RT_TextureFormat_R8;
+						params.image.width  = (uint32_t)w;
+						params.image.height = (uint32_t)h;
+						params.image.pixels = roughness;
 						params.name   = RT_ArenaPrintF(image_temp, "%s (roughness)", image->uri);
 						loaded_images[index]->handle2 = RT_UploadTexture(&params);
 					}
@@ -200,10 +209,10 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path, RT_MaterialOverride*
 				else
 				{
 					RT_UploadTextureParams params = {};
-					params.format = is_srgb ? RT_TextureFormat_SRGBA8 : RT_TextureFormat_RGBA8;
-					params.width  = (uint32_t)w;
-					params.height = (uint32_t)h;
-					params.pixels = (uint32_t *)pixels;
+					params.image.format = is_srgb ? RT_TextureFormat_RGBA8_SRGB : RT_TextureFormat_RGBA8;
+					params.image.width  = (uint32_t)w;
+					params.image.height = (uint32_t)h;
+					params.image.pixels = loaded_image.pixels;
 					params.name   = image->uri ? image->uri : RT_ArenaPrintF(image_temp, "GLTF Texture #%d", running_image_index++);
 					loaded_images[index]->handle = RT_UploadTexture(&params);
 				}

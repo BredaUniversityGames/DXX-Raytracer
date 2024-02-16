@@ -801,11 +801,11 @@ static void RT_GetPolyData(RT_TriangleBuffer *buf,
 void RT_InitglTFModels(void)
 {
 	g_rt_cockpit_settings.cockpit_hud_texture = RT_UploadTexture(&(RT_UploadTextureParams) {
-		.width = 1024,
-		.height = 1024,
-		.name = "Cockpit UI",
-		.format = RT_TextureFormat_SRGBA8,
-		.pixels = RT_ArenaAllocArray(&g_thread_arena, 1024 * 1024, uint32_t)
+		.image.width  = 1024,
+		.image.height = 1024,
+		.image.format = RT_TextureFormat_RGBA8_SRGB,
+		.image.pixels = RT_ArenaAllocArray(&g_thread_arena, 1024 * 1024, uint32_t),
+		.name   = "Cockpit UI",
 	});
 
 	RT_Material cockpit_material = { 0 };

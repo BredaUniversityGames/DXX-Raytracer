@@ -135,13 +135,6 @@ typedef struct RT_RendererIO
 	bool frame_frozen;
 } RT_RendererIO;
 
-typedef enum RT_TextureFormat
-{
-	RT_TextureFormat_RGBA8,
-	RT_TextureFormat_SRGBA8,
-	RT_TextureFormat_R8,
-} RT_TextureFormat;
-
 static char g_rt_texture_format_bpp[] =
 {
 	4,
@@ -156,26 +149,10 @@ typedef enum RT_TextureFlag
 
 typedef struct RT_UploadTextureParams
 {
-	RT_TextureFormat format;
-
-	uint32_t width;
-	uint32_t height;
-	uint32_t pitch;
-	uint32_t* pixels;
-	uint8_t flags;
-
+	RT_Image image;
+	uint8_t  flags;
 	const char *name; // Optional, used for enhanced graphics debugging
 } RT_UploadTextureParams;
-
-typedef struct RT_UploadTextureParamsDDS
-{
-	struct DDS_HEADER* header;
-	uint8_t* ddsData;
-	const uint8_t* bitData;
-	size_t bitSize;
-	bool sRGB;			// force the format to a srgb format
-	const char* name; // Optional, used for enhanced graphics debugging
-} RT_UploadTextureParamsDDS;
 
 typedef struct RT_Triangle
 {
@@ -322,7 +299,6 @@ RT_API uint16_t        *RT_GetMaterialIndicesArray(void);
 RT_API void RT_DoRendererDebugMenus(const RT_DoRendererDebugMenuParams *params);
 
 RT_API RT_ResourceHandle RT_UploadTexture(const RT_UploadTextureParams* params);
-RT_API RT_ResourceHandle RT_UploadTextureDDS(const RT_UploadTextureParamsDDS* params);
 // Updates the material on the GPU at the given index, so long as it is less than RT_MAX_MATERIALS.
 // Returns the material_index you passed in, or UINT16_MAX if it was out of bounds.
 RT_API uint16_t RT_UpdateMaterial(uint16_t material_index, const RT_Material *material);

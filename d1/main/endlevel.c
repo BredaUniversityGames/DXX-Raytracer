@@ -1462,11 +1462,11 @@ try_again:
 					// Load terrain bitmap
                     const uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, terrain_bitmap);
                     const RT_UploadTextureParams terrain_tex_params = {
-                        .format = RT_TextureFormat_RGBA8,
-                        .height = terrain_bitmap->bm_h,
-                        .width = terrain_bitmap->bm_w,
+                        .image.format = RT_TextureFormat_RGBA8,
+                        .image.height = terrain_bitmap->bm_h,
+                        .image.width  = terrain_bitmap->bm_w,
+                        .image.pixels = pixels,
                         .name = "terrain texture",
-                        .pixels = pixels,
                     };
                     const RT_Material material_definition = (RT_Material){
                         .albedo_texture = RT_UploadTexture(&terrain_tex_params),
@@ -1520,11 +1520,11 @@ try_again:
 					// Load satellite bitmap
 					const uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, satellite_bitmap);
 					const RT_UploadTextureParams terrain_tex_params = {
-						.format = RT_TextureFormat_RGBA8,
-						.height = terrain_bitmap->bm_h,
-						.width = terrain_bitmap->bm_w,
+						.image.format = RT_TextureFormat_RGBA8,
+						.image.height = terrain_bitmap->bm_h,
+						.image.width = terrain_bitmap->bm_w,
+						.image.pixels = pixels,
 						.name = "satellite texture",
-						.pixels = pixels,
 					};
 					const RT_Material material_definition = (RT_Material){
 						.albedo_texture = RT_UploadTexture(&terrain_tex_params),

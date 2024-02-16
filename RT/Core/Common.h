@@ -54,6 +54,19 @@ RT_API double RT_SecondsElapsed(RT_HighResTime start, RT_HighResTime end);
 #define RT_SLL_PUSH(head, node) ((node)->next = (head), (head) = (node))
 #define RT_SLL_POP(head) head; do { (head) = (head)->next; } while(0)
 
+#define RT_IS_POW2(x) (((x) & ((x) - 1)) == 0)
+
+static inline uint32_t RT_U32Log2(uint32_t x)
+{
+	uint32_t result = 0;
+	while (x)
+	{
+		result += 1;
+		x = x >> 1;
+	}
+	return result;
+}
+
 #define RT_DLL_PUSH_BACK(first, last, node) \
 	do {                                    \
 		(node)->prev = (last);              \

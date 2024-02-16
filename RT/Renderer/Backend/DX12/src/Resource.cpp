@@ -231,40 +231,68 @@ namespace RT
 		ResourceTransition(command_list, dst, dst_state);
 	}
 
-	void UploadTextureData(ID3D12Resource* dst, size_t row_pitch, size_t row_count, const void* data_ptr)
+	void UploadTextureData(ID3D12Resource* dst, size_t width, size_t height, size_t bytes_per_pixel, void *const *mips, size_t mip_count)
 	{
-		D3D12_PLACED_SUBRESOURCE_FOOTPRINT pitch_footprint;
-		D3D12_RESOURCE_DESC dst_desc = dst->GetDesc();
-		size_t dst_byte_size;
-		g_d3d.device->GetCopyableFootprints(&dst_desc, 0, 1, 0, &pitch_footprint, nullptr, nullptr, &dst_byte_size);
-
-		RingBufferAllocation ring_buf_alloc = AllocateFromRingBuffer(&g_d3d.resource_upload_ring_buffer, dst_byte_size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
-		D3D12_PLACED_SUBRESOURCE_FOOTPRINT placed_footprint = {};
-		placed_footprint.Offset = ring_buf_alloc.byte_offset;
-		placed_footprint.Footprint = pitch_footprint.Footprint;
-
-		uint8_t* src_ptr = (uint8_t*)data_ptr;
-		uint8_t* dst_ptr = ring_buf_alloc.ptr;
-
-		size_t dst_pitch = pitch_footprint.Footprint.RowPitch;
-
-		for (size_t y = 0; y < row_count; ++y)
+		size_t mip_width  = width;
+		size_t mip_height = height;
+		for (size_t mip_index = 0; mip_index < mip_count; mip_index++)
 		{
-			memcpy(dst_ptr, src_ptr, row_pitch);
+			D3D12_PLACED_SUBRESOURCE_FOOTPRINT pitch_footprint;
+			D3D12_RESOURCE_DESC dst_desc = dst->GetDesc();
+			UINT   dst_row_count;
+			UINT64 dst_row_byte_size;
+			UINT64 dst_byte_size;
+			g_d3d.device->GetCopyableFootprints(&dst_desc, (UINT)mip_index, 1, 0, &pitch_footprint, &dst_row_count, &dst_row_byte_size, &dst_byte_size);
 
-			src_ptr += row_pitch;
-			dst_ptr += dst_pitch;
+			RingBufferAllocation alloc = AllocateFromRingBuffer(&g_d3d.resource_upload_ring_buffer, dst_byte_size, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT);
+
+			// NOTE(daniel): For now I am carrying forward the assumption that rows are tightly patched for the src data.
+			// Hopefully, that's okay.
+
+			uint8_t *src_at = (uint8_t *)mips[mip_index];
+			uint8_t *dst_at = alloc.ptr;
+
+			size_t src_byte_size     = mip_width*mip_height*bytes_per_pixel;
+			size_t src_row_byte_size = src_byte_size / dst_row_count;
+
+			size_t dst_pitch = pitch_footprint.Footprint.RowPitch;
+
+			for (size_t y = 0; y < dst_row_count; ++y)
+			{
+				memcpy(dst_at, src_at, src_row_byte_size);
+
+				src_at += src_row_byte_size;
+				dst_at += dst_pitch;
+			}
+
+			D3D12_PLACED_SUBRESOURCE_FOOTPRINT placed_footprint = {};
+			placed_footprint.Offset    = alloc.byte_offset;
+			placed_footprint.Footprint = pitch_footprint.Footprint;
+
+			D3D12_TEXTURE_COPY_LOCATION src_loc = {};
+			src_loc.pResource          = alloc.resource;
+			src_loc.PlacedFootprint    = placed_footprint;
+			src_loc.Type               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+			D3D12_TEXTURE_COPY_LOCATION dest_loc = {};
+			dest_loc.pResource         = dst;
+			dest_loc.SubresourceIndex  = (UINT)mip_index;
+			dest_loc.Type              = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+			D3D12_RESOURCE_STATES dst_state = g_d3d.resource_tracker.GetResourceState(dst);
+
+			// NOTE(daniel): It seems a bit cringe that we're switching resource states back and forth in the inner loop?
+			CommandList& command_list = *alloc.command_list;
+			ResourceTransition(command_list, dst, D3D12_RESOURCE_STATE_COPY_DEST);
+			command_list->CopyTextureRegion(&dest_loc, 0, 0, 0, &src_loc, nullptr);
+			ResourceTransition(command_list, dst, dst_state);
+
+			mip_width  /= 2;
+			mip_height /= 2;
 		}
-
-		D3D12_TEXTURE_COPY_LOCATION src_loc = {};
-		src_loc.pResource = ring_buf_alloc.resource;
-		src_loc.PlacedFootprint = placed_footprint;
-		src_loc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-
-		CommandList& command_list = *ring_buf_alloc.command_list;
-		CopyTextureRegion(command_list, dst, 0, 0, 0, &src_loc, nullptr);
 	}
 
+#if 0
 	void UploadTextureDataDDS(ID3D12Resource* dst, size_t width, size_t height, size_t bpp, size_t mipCount, const void* data_ptr)
 	{
 		uint8_t* src_ptr = (uint8_t*)data_ptr;  // keep track of where we are in the texture data between mipmaps
@@ -326,6 +354,7 @@ namespace RT
 		}
 
 	}
+#endif
 
 	void CreateTextureSRV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, uint32_t mips)
 	{

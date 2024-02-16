@@ -93,6 +93,13 @@ static inline RT_String RT_CopyString(RT_Arena *arena, RT_String string)
 	return result;
 }
 
+static inline const char *RT_CopyStringNullTerm(RT_Arena *arena, RT_String string)
+{
+	char *result = (char *)RT_ArenaCopyArray(arena, string.bytes, string.count + 1);
+	result[string.count + 1] = 0;
+	return result;
+}
+
 typedef struct RT_ParseFloatResult
 {
 	bool success;
@@ -111,6 +118,11 @@ typedef struct RT_ParseIntResult
 
 RT_API RT_ParseIntResult RT_ParseInt(RT_String string, int base);
 
+static inline char RT_CharToLower(char c)
+{
+	return c >= 'A' && c <= 'Z' ? c + 'a' - 'A' : c;
+}
+
 static inline bool RT_StringsAreEqual(RT_String a, RT_String b)
 {
 	bool result = a.count == b.count;
@@ -128,6 +140,57 @@ static inline bool RT_StringsAreEqual(RT_String a, RT_String b)
 	}
 
 	return result;
+}
+
+static inline bool RT_StringsAreEqualNoCase(RT_String a, RT_String b)
+{
+	bool result = a.count == b.count;
+
+	if (result)
+	{
+		for (size_t i = 0; i < a.count; i++)
+		{
+			if (RT_CharToLower(a.bytes[i]) != RT_CharToLower(b.bytes[i]))
+			{
+				result = false;
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+static inline RT_String RT_Substring(RT_String string, size_t start, size_t count)
+{
+	start = RT_MIN(start, string.count);
+	
+	if (count > start - string.count)
+	{
+		count = start - string.count;
+	}
+
+	RT_String result;
+	result.bytes = string.bytes + start;
+	result.count = count;
+	return result;
+}
+
+// Returns extension including dot
+// For an extension like .tar.gz it will only return '.gz'.
+static inline RT_String RT_StringFindExtension(RT_String string)
+{
+	size_t last_dot = RT_String_NPOS;
+
+	for (size_t i = 0; i < string.count; i++)
+	{
+		if (string.bytes[i] == '.')
+		{
+			last_dot = i;
+		}
+	}
+
+	return RT_Substring(string, last_dot, RT_String_NPOS);
 }
 
 static inline size_t RT_StringFindChar(RT_String string, char c)

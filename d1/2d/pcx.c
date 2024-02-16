@@ -194,15 +194,17 @@ int pcx_read_bitmap( char * filename, grs_bitmap * bmp,int bitmap_type ,ubyte * 
 	{
 		RT_ArenaMemoryScope(&g_thread_arena)
 		{
-			int w, h, c;
-			unsigned char *pixels = RT_LoadImageFromDisk(&g_thread_arena, filename, &w, &h, &c, 4);
+			RT_Image image = RT_LoadImageFromDisk(&g_thread_arena, filename, 4, true);
 
-			if (!pixels)
+			if (!image.pixels)
 				return PCX_ERROR_OPENING;
+
+			uint32_t w  = image.width;
+			uint32_t h  = image.height;
 
 			// haha im going to hell
 			unsigned char *pixels_copy = d_malloc(w*h*sizeof(uint32_t));
-			memcpy(pixels_copy, pixels, w*h*sizeof(uint32_t));
+			memcpy(pixels_copy, image.pixels, w*h*sizeof(uint32_t));
 
 			gr_init_bitmap(bmp, BM_RGBA8, 0, 0, w, h, 4*w, pixels_copy);
 		}
