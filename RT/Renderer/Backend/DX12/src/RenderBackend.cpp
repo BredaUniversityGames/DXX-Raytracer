@@ -3480,7 +3480,6 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
 		(uint16_t)resource_mip_count);
 
-	// void UploadTextureData(ID3D12Resource* dst, size_t width, size_t height, size_t bytes_per_pixel, void **mips, size_t mip_count);
 	UploadTextureData(resource.texture, image.width, image.height, bytes_per_pixel, image.mips, upload_mip_count);
 
 	if (generate_mips)
