@@ -187,9 +187,21 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 				if (!should_render) { continue; }
 
 				int absolute_side_index = MAX_SIDES_PER_SEGMENT*seg_id + side_index;
-				triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index);
-				triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index);
-
+				switch (s->type) 
+				{
+					case SIDE_IS_TRI_13:
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 3, absolute_side_index);
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 1, 2, 3, absolute_side_index);
+					break;
+					
+					case SIDE_IS_QUAD:
+					case SIDE_IS_TRI_02:
+					default:
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index);
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index);
+					break;
+				}
+				
 				RT_ExtractLightsFromSide(s, &verts[vertex_offset], triangles[num_triangles - 1].normal0, seg_id);
 			}
 		}
