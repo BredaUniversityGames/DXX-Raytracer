@@ -156,7 +156,7 @@ RT_Image RT_LoadDDSFromMemory(RT_String memory)
 
 	if (memcmp(data, &dds_magic, 4) != 0)
 	{
-		fprintf(stderr, "RT_LoadDDSFromMemory]: ERROR: File did not start with \"DDS \", which does not match my expectations...\n");
+		fprintf(stderr, "[RT_LoadDDSFromMemory]: ERROR: File did not start with \"DDS \", which does not match my expectations...\n");
 		return result;
 	}
 
@@ -263,7 +263,7 @@ RT_Image RT_LoadDDSFromMemory(RT_String memory)
 
 	if (header->mipMapCount > 16)
 	{
-		fprintf(stderr, "[RT_LoadDDSFromMemory]: ERROR: Crazy number of mips! You can't have more than 16 mips!\n");
+		fprintf(stderr, "[RT_LoadDDSFromMemory]: ERROR: Number of mips is %u! You can't have more than 16 mips!\n", header->mipMapCount);
 		return result;
 	}
 

@@ -209,10 +209,7 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path, RT_MaterialOverride*
 				else
 				{
 					RT_UploadTextureParams params = {};
-					params.image.format = is_srgb ? RT_TextureFormat_RGBA8_SRGB : RT_TextureFormat_RGBA8;
-					params.image.width  = (uint32_t)w;
-					params.image.height = (uint32_t)h;
-					params.image.pixels = loaded_image.pixels;
+					params.image = loaded_image;
 					params.name   = image->uri ? image->uri : RT_ArenaPrintF(image_temp, "GLTF Texture #%d", running_image_index++);
 					loaded_images[index]->handle = RT_UploadTexture(&params);
 				}
