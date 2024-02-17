@@ -3468,6 +3468,7 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 		if (max_mip_count > min_mip_level)
 		{
 			upload_mip_count = RT_MIN(upload_mip_count, max_mip_count - min_mip_level);
+			resource_mip_count = upload_mip_count;
 		}
 	}
 
