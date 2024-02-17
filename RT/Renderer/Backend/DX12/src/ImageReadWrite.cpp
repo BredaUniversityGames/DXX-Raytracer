@@ -286,18 +286,18 @@ RT_Image RT_LoadDDSFromMemory(RT_String memory)
 	uint32_t mip_height = result.height;
 	for (size_t mip_index = 0; mip_index < result.mip_count; mip_index++)
 	{
+		if (mip_width == 0 || mip_height == 0)
+		{
+			fprintf(stderr, "[RT_LoadDDSFromMemory]: Warning: I'm confused about the number of mips. Results may be wrong.\n");
+			break;
+		}
+
 		result.mips[mip_index] = mip_at;
 
 		// NOTE(daniel): There is an assumption here that rows are tightly packed, it seems.
 		mip_at += mip_width*mip_height*bytes_per_pixel;
 		mip_width  /= 2;
 		mip_height /= 2;
-
-		if (mip_width == 0 || mip_height == 0)
-		{
-			fprintf(stderr, "[RT_LoadDDSFromMemory]: Warning: I'm confused about the number of mips. Results may be wrong.\n");
-			break;
-		}
 	}
 
 	return result;
