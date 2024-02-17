@@ -65,7 +65,7 @@ RT_Triangle RT_TriangleFromIndices(RT_Vertex* verts, int vert_offset, int v0, in
 
 void RT_ExtractLightsFromSide(side *side, RT_Vertex *vertices, RT_Vec3 normal, int seg_id)
 {
-	int light_index = RT_IsLight(side->tmap_num2);
+	int light_index = RT_IsLight(side->tmap_num2 & 0x3FFF);
 	if (light_index > -1)
 	{
 		RT_Vec2 uv_min = RT_Vec2Make(INFINITY, INFINITY);
@@ -187,9 +187,21 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 				if (!should_render) { continue; }
 
 				int absolute_side_index = MAX_SIDES_PER_SEGMENT*seg_id + side_index;
-				triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index);
-				triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index);
-
+				switch (s->type) 
+				{
+					case SIDE_IS_TRI_13:
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 3, absolute_side_index);
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 1, 2, 3, absolute_side_index);
+					break;
+					
+					case SIDE_IS_QUAD:
+					case SIDE_IS_TRI_02:
+					default:
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index);
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index);
+					break;
+				}
+				
 				RT_ExtractLightsFromSide(s, &verts[vertex_offset], triangles[num_triangles - 1].normal0, seg_id);
 			}
 		}
