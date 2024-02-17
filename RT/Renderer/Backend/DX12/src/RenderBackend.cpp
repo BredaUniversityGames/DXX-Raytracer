@@ -114,6 +114,172 @@ void RT::ResourceTransitions(ID3D12GraphicsCommandList* list, size_t num_resourc
 
 namespace
 {
+	// yoinked from DDSc.h
+    inline size_t DDSBitsPerPixel(_In_ DXGI_FORMAT fmt)
+    {
+        switch (fmt)
+        {
+        case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+        case DXGI_FORMAT_R32G32B32A32_FLOAT:
+        case DXGI_FORMAT_R32G32B32A32_UINT:
+        case DXGI_FORMAT_R32G32B32A32_SINT:
+            return 128;
+
+        case DXGI_FORMAT_R32G32B32_TYPELESS:
+        case DXGI_FORMAT_R32G32B32_FLOAT:
+        case DXGI_FORMAT_R32G32B32_UINT:
+        case DXGI_FORMAT_R32G32B32_SINT:
+            return 96;
+
+        case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+        case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        case DXGI_FORMAT_R16G16B16A16_UNORM:
+        case DXGI_FORMAT_R16G16B16A16_UINT:
+        case DXGI_FORMAT_R16G16B16A16_SNORM:
+        case DXGI_FORMAT_R16G16B16A16_SINT:
+        case DXGI_FORMAT_R32G32_TYPELESS:
+        case DXGI_FORMAT_R32G32_FLOAT:
+        case DXGI_FORMAT_R32G32_UINT:
+        case DXGI_FORMAT_R32G32_SINT:
+        case DXGI_FORMAT_R32G8X24_TYPELESS:
+        case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+        case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+        case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
+        case DXGI_FORMAT_Y416:
+        case DXGI_FORMAT_Y210:
+        case DXGI_FORMAT_Y216:
+            return 64;
+
+        case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+        case DXGI_FORMAT_R10G10B10A2_UNORM:
+        case DXGI_FORMAT_R10G10B10A2_UINT:
+        case DXGI_FORMAT_R11G11B10_FLOAT:
+        case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+        case DXGI_FORMAT_R8G8B8A8_UNORM:
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        case DXGI_FORMAT_R8G8B8A8_UINT:
+        case DXGI_FORMAT_R8G8B8A8_SNORM:
+        case DXGI_FORMAT_R8G8B8A8_SINT:
+        case DXGI_FORMAT_R16G16_TYPELESS:
+        case DXGI_FORMAT_R16G16_FLOAT:
+        case DXGI_FORMAT_R16G16_UNORM:
+        case DXGI_FORMAT_R16G16_UINT:
+        case DXGI_FORMAT_R16G16_SNORM:
+        case DXGI_FORMAT_R16G16_SINT:
+        case DXGI_FORMAT_R32_TYPELESS:
+        case DXGI_FORMAT_D32_FLOAT:
+        case DXGI_FORMAT_R32_FLOAT:
+        case DXGI_FORMAT_R32_UINT:
+        case DXGI_FORMAT_R32_SINT:
+        case DXGI_FORMAT_R24G8_TYPELESS:
+        case DXGI_FORMAT_D24_UNORM_S8_UINT:
+        case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+        case DXGI_FORMAT_X24_TYPELESS_G8_UINT:
+        case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
+        case DXGI_FORMAT_R8G8_B8G8_UNORM:
+        case DXGI_FORMAT_G8R8_G8B8_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_UNORM:
+        case DXGI_FORMAT_B8G8R8X8_UNORM:
+        case DXGI_FORMAT_R10G10B10_XR_BIAS_A2_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        case DXGI_FORMAT_B8G8R8X8_TYPELESS:
+        case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+        case DXGI_FORMAT_AYUV:
+        case DXGI_FORMAT_Y410:
+        case DXGI_FORMAT_YUY2:
+#if (defined(_XBOX_ONE) && defined(_TITLE)) || defined(_GAMING_XBOX)
+        case DXGI_FORMAT_R10G10B10_7E3_A2_FLOAT:
+        case DXGI_FORMAT_R10G10B10_6E4_A2_FLOAT:
+        case DXGI_FORMAT_R10G10B10_SNORM_A2_UNORM:
+#endif
+            return 32;
+
+        case DXGI_FORMAT_P010:
+        case DXGI_FORMAT_P016:
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
+        case DXGI_FORMAT_V408:
+#endif
+#if (defined(_XBOX_ONE) && defined(_TITLE)) || defined(_GAMING_XBOX)
+        case DXGI_FORMAT_D16_UNORM_S8_UINT:
+        case DXGI_FORMAT_R16_UNORM_X8_TYPELESS:
+        case DXGI_FORMAT_X16_TYPELESS_G8_UINT:
+#endif
+            return 24;
+
+        case DXGI_FORMAT_R8G8_TYPELESS:
+        case DXGI_FORMAT_R8G8_UNORM:
+        case DXGI_FORMAT_R8G8_UINT:
+        case DXGI_FORMAT_R8G8_SNORM:
+        case DXGI_FORMAT_R8G8_SINT:
+        case DXGI_FORMAT_R16_TYPELESS:
+        case DXGI_FORMAT_R16_FLOAT:
+        case DXGI_FORMAT_D16_UNORM:
+        case DXGI_FORMAT_R16_UNORM:
+        case DXGI_FORMAT_R16_UINT:
+        case DXGI_FORMAT_R16_SNORM:
+        case DXGI_FORMAT_R16_SINT:
+        case DXGI_FORMAT_B5G6R5_UNORM:
+        case DXGI_FORMAT_B5G5R5A1_UNORM:
+        case DXGI_FORMAT_A8P8:
+        case DXGI_FORMAT_B4G4R4A4_UNORM:
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN10)
+        case DXGI_FORMAT_P208:
+        case DXGI_FORMAT_V208:
+#endif
+            return 16;
+
+        case DXGI_FORMAT_NV12:
+        case DXGI_FORMAT_420_OPAQUE:
+        case DXGI_FORMAT_NV11:
+            return 12;
+
+        case DXGI_FORMAT_R8_TYPELESS:
+        case DXGI_FORMAT_R8_UNORM:
+        case DXGI_FORMAT_R8_UINT:
+        case DXGI_FORMAT_R8_SNORM:
+        case DXGI_FORMAT_R8_SINT:
+        case DXGI_FORMAT_A8_UNORM:
+        case DXGI_FORMAT_BC2_TYPELESS:
+        case DXGI_FORMAT_BC2_UNORM:
+        case DXGI_FORMAT_BC2_UNORM_SRGB:
+        case DXGI_FORMAT_BC3_TYPELESS:
+        case DXGI_FORMAT_BC3_UNORM:
+        case DXGI_FORMAT_BC3_UNORM_SRGB:
+        case DXGI_FORMAT_BC5_TYPELESS:
+        case DXGI_FORMAT_BC5_UNORM:
+        case DXGI_FORMAT_BC5_SNORM:
+        case DXGI_FORMAT_BC6H_TYPELESS:
+        case DXGI_FORMAT_BC6H_UF16:
+        case DXGI_FORMAT_BC6H_SF16:
+        case DXGI_FORMAT_BC7_TYPELESS:
+        case DXGI_FORMAT_BC7_UNORM:
+        case DXGI_FORMAT_BC7_UNORM_SRGB:
+        case DXGI_FORMAT_AI44:
+        case DXGI_FORMAT_IA44:
+        case DXGI_FORMAT_P8:
+#if (defined(_XBOX_ONE) && defined(_TITLE)) || defined(_GAMING_XBOX)
+        case DXGI_FORMAT_R4G4_UNORM:
+#endif
+            return 8;
+
+        case DXGI_FORMAT_R1_UNORM:
+            return 1;
+
+        case DXGI_FORMAT_BC1_TYPELESS:
+        case DXGI_FORMAT_BC1_UNORM:
+        case DXGI_FORMAT_BC1_UNORM_SRGB:
+        case DXGI_FORMAT_BC4_TYPELESS:
+        case DXGI_FORMAT_BC4_UNORM:
+        case DXGI_FORMAT_BC4_SNORM:
+            return 4;
+
+        case DXGI_FORMAT_UNKNOWN:
+        case DXGI_FORMAT_FORCE_UINT:
+        default:
+            return 0;
+        }
+    }
 
 	struct ShaderDefineSettings
 	{
@@ -2038,11 +2204,10 @@ namespace
 			MemoryScope temp;
 			const char *path = RT_ArenaPrintF(temp, "assets/textures/noise/LDR_RGBA_%d.png", blue_noise_index);
 
-			int w, h, n;
-			unsigned char *pixels = RT_LoadImageFromDisk(temp, path, &w, &h, &n, 4);
+			RT_Image image = RT_LoadImageFromDisk(temp, path, 4, false);
 
-			g_d3d.blue_noise_textures[blue_noise_index] = RT_CreateTexture(Utf16FromUtf8(temp, path), DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RESOURCE_FLAG_NONE, (size_t)w, (uint32_t)h);
-			UploadTextureData(g_d3d.blue_noise_textures[blue_noise_index], 4*w, h, pixels);
+			g_d3d.blue_noise_textures[blue_noise_index] = RT_CreateTexture(Utf16FromUtf8(temp, path), DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RESOURCE_FLAG_NONE, (size_t)image.width, (uint32_t)image.height);
+			UploadTextureData(g_d3d.blue_noise_textures[blue_noise_index], image.width, image.height, 4, image.mips, 1);
 
 			for (size_t frame_index = 0; frame_index < BACK_BUFFER_COUNT; frame_index++)
 			{
@@ -2141,9 +2306,11 @@ namespace
 			uint32_t pixels[] = { 0xFFFFFFFF };
 
 			RT_UploadTextureParams white_texture_params = {};
-			white_texture_params.width = 1;
-			white_texture_params.height = 1;
-			white_texture_params.pixels = pixels;
+			RT_Image& image = white_texture_params.image;
+			image.width  = 1;
+			image.height = 1;
+			image.pixels = pixels;
+			image.format = RT_TextureFormat_RGBA8;
 			white_texture_params.name = "White Texture";
 
 			g_d3d.white_texture_handle = RenderBackend::UploadTexture(white_texture_params);
@@ -2157,9 +2324,11 @@ namespace
 			uint32_t pixels[] = { 0xFF000000 };
 
 			RT_UploadTextureParams black_texture_params = {};
-			black_texture_params.width = 1;
-			black_texture_params.height = 1;
-			black_texture_params.pixels = pixels;
+			RT_Image& image = black_texture_params.image;
+			image.width  = 1;
+			image.height = 1;
+			image.pixels = pixels;
+			image.format = RT_TextureFormat_RGBA8;
 			black_texture_params.name = "Black Texture";
 
 			g_d3d.black_texture_handle = RenderBackend::UploadTexture(black_texture_params);
@@ -2177,9 +2346,11 @@ namespace
 			uint32_t pixels = (a << 24) | (b << 16) | (g << 8) | (r << 0);
 
 			RT_UploadTextureParams default_normal_params = {};
-			default_normal_params.width = 1;
-			default_normal_params.height = 1;
-			default_normal_params.pixels = &pixels;
+			RT_Image& image = default_normal_params.image;
+			image.width  = 1;
+			image.height = 1;
+			image.pixels = &pixels;
+			image.format = RT_TextureFormat_RGBA8;
 			default_normal_params.name = "Default normal texture";
 			RT_ResourceHandle default_normal_handle = RenderBackend::UploadTexture(default_normal_params);
 
@@ -2199,9 +2370,11 @@ namespace
 			};
 
 			RT_UploadTextureParams params = {};
-			params.width = 4;
-			params.height = 4;
-			params.pixels = pixels;
+			RT_Image& image = params.image;
+			image.width  = 4;
+			image.height = 4;
+			image.pixels = pixels;
+			image.format = RT_TextureFormat_RGBA8;
 			params.name = "Default Missing Texture";
 			g_d3d.pink_checkerboard_texture = RenderBackend::UploadTexture(params);
 		}
@@ -3241,7 +3414,9 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 {
 	RT::MemoryScope temp;
 
-	if (!texture_params.pixels)
+	RT_Image image = texture_params.image;
+
+	if (!image.pixels)
 		return g_d3d.pink_checkerboard_texture;
 
 	TextureResource resource = {};
@@ -3250,324 +3425,71 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
     static int n_textures_uploaded_please_remove_me_later = 0;
     printf("textures loaded: %d\n", ++n_textures_uploaded_please_remove_me_later);
 
-	int bpp = 4;
-	DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	switch (texture_params.format)
+	bool        is_dxt_format = false;
+	DXGI_FORMAT format        = DXGI_FORMAT_R8G8B8A8_UNORM;
+	switch (image.format)
 	{
-		case RT_TextureFormat_RGBA8:  format = DXGI_FORMAT_R8G8B8A8_UNORM;      bpp = 4; break;
-		case RT_TextureFormat_SRGBA8: format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; bpp = 4; break;
-		case RT_TextureFormat_R8:     format = DXGI_FORMAT_R8_UNORM;            bpp = 1; break;
+		case RT_TextureFormat_RGBA8:      format = DXGI_FORMAT_R8G8B8A8_UNORM;                              break;
+		case RT_TextureFormat_RGBA8_SRGB: format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;                         break;
+		case RT_TextureFormat_R8:         format = DXGI_FORMAT_R8_UNORM;                                    break;
+		case RT_TextureFormat_BC1:        format = DXGI_FORMAT_BC1_UNORM;             is_dxt_format = true; break;
+		case RT_TextureFormat_BC1_SRGB:   format = DXGI_FORMAT_BC1_UNORM_SRGB;        is_dxt_format = true; break;
+		case RT_TextureFormat_BC2:        format = DXGI_FORMAT_BC2_UNORM;             is_dxt_format = true; break;
+		case RT_TextureFormat_BC2_SRGB:   format = DXGI_FORMAT_BC2_UNORM_SRGB;        is_dxt_format = true; break;
+		case RT_TextureFormat_BC3:        format = DXGI_FORMAT_BC3_UNORM;             is_dxt_format = true; break;
+		case RT_TextureFormat_BC3_SRGB:   format = DXGI_FORMAT_BC3_UNORM_SRGB;        is_dxt_format = true; break;
+		case RT_TextureFormat_BC4:        format = DXGI_FORMAT_BC4_UNORM;             is_dxt_format = true; break;
+		case RT_TextureFormat_BC5:        format = DXGI_FORMAT_BC5_UNORM;             is_dxt_format = true; break;
+		case RT_TextureFormat_BC7:        format = DXGI_FORMAT_BC7_UNORM;             is_dxt_format = true; break;
+		case RT_TextureFormat_BC7_SRGB:   format = DXGI_FORMAT_BC7_UNORM_SRGB;        is_dxt_format = true; break;
 	}
 
-	uint32_t w = texture_params.width, h = texture_params.height, num_mips = 0;
-	while (w >= 1 && h >= 1)
+	size_t bytes_per_pixel = DDSBitsPerPixel(format) / 8;
+
+	if (!image.pitch)
 	{
-		num_mips++;
-		w /= 2;
-		h /= 2;
+		image.pitch = (uint32_t)(image.width*bytes_per_pixel);
 	}
 
-	resource.texture = RT_CreateTexture(Utf16FromUtf8(temp, texture_resource_name), format, D3D12_RESOURCE_FLAG_NONE, (size_t)texture_params.width, (uint32_t)texture_params.height,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, (uint16_t)num_mips);
+	uint32_t resource_mip_count = RT_MAX(1, image.mip_count);
+	uint32_t upload_mip_count   = RT_MAX(1, image.mip_count);
 
-	UploadTextureData(resource.texture, bpp*texture_params.width, texture_params.height, texture_params.pixels);
-	GenerateMips(&resource);
+	bool generate_mips = !is_dxt_format && upload_mip_count <= 1;
+
+	if (generate_mips)
+	{
+		resource_mip_count = RT_U32Log2(RT_MIN(image.width, image.height));
+	}
+	else if (is_dxt_format)
+	{
+		uint32_t max_mip_count = RT_U32Log2(RT_MIN(image.width, image.height));
+		uint32_t min_mip_level = 6; // log2(64) - (this is the minimum mip map size we want to use.  Below 64px dds files start to get packed inefficiently into memory and the visual difference is not noticeable.)
+
+		if (max_mip_count > min_mip_level)
+		{
+			upload_mip_count = RT_MIN(upload_mip_count, max_mip_count - min_mip_level);
+			resource_mip_count = upload_mip_count;
+		}
+	}
+
+	resource.texture = RT_CreateTexture(
+		Utf16FromUtf8(temp, texture_resource_name), 
+		format,
+		D3D12_RESOURCE_FLAG_NONE,
+		(size_t)image.width, 
+		(uint32_t)image.height,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
+		(uint16_t)resource_mip_count);
+
+	UploadTextureData(resource.texture, image.width, image.height, bytes_per_pixel, image.mips, upload_mip_count);
+
+	if (generate_mips)
+	{
+		GenerateMips(&resource);
+	}
 
 	resource.descriptors = g_d3d.cbv_srv_uav.Allocate(1);
-	CreateTextureSRV(resource.texture, resource.descriptors.GetCPUDescriptor(0), format);
-
-	return g_texture_slotmap.Insert(resource);
-}
-
-//  Code modified from DirectXTK12 : DDSTextureLoader::CreateTextureFromDDS (https://github.com/microsoft/DirectXTK12/blob/main/Src/DDSTextureLoader.cpp)
-RT_ResourceHandle RenderBackend::UploadTextureDDS(const RT_UploadTextureParamsDDS& texture_params)
-{
-	RT::MemoryScope temp;
-
-	if (!texture_params.bitData)
-	{
-		printf("RenderBackend::UploadTextureDDS -- bitData empty returning checkerboard\n");
-		return g_d3d.pink_checkerboard_texture;
-	}
-
-	TextureResource resource = {};
-	char* texture_resource_name = RT_ArenaPrintF(temp, "Texture: %s", texture_params.name);
-
-	// first process the dds data
-
-	const UINT width = texture_params.header->width;
-	UINT height = texture_params.header->height;
-	UINT depth = texture_params.header->depth;
-
-	D3D12_RESOURCE_DIMENSION resDim = D3D12_RESOURCE_DIMENSION_UNKNOWN;
-	UINT arraySize = 1;
-	DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
-	bool isCubeMap = false;
-
-	size_t mipCount = texture_params.header->mipMapCount;
-	if (0 == mipCount)
-	{
-		mipCount = 1;
-	}
-
-	if ((texture_params.header->ddspf.flags & DDS_FOURCC) &&
-		(MAKEFOURCC('D', 'X', '1', '0') == texture_params.header->ddspf.fourCC))
-	{
-		DDS_HEADER_DXT10* d3d10ext = (DDS_HEADER_DXT10*)(texture_params.header + 1);	// move pointer to end of DDS_HEADER and cast to DDS_HEADER_DXT10 (1 = size of DDS_HEADER)
-
-		arraySize = d3d10ext->arraySize;
-		if (arraySize == 0)
-		{
-			printf("RenderBackend::UploadTextureDDS -- arraySize 0 returning checkerboard\n");
-			return g_d3d.pink_checkerboard_texture;
-		}
-
-		switch (d3d10ext->dxgiFormat)
-		{
-		case DXGI_FORMAT_NV12:
-		case DXGI_FORMAT_P010:
-		case DXGI_FORMAT_P016:
-		case DXGI_FORMAT_420_OPAQUE:
-			if ((d3d10ext->resourceDimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D)
-				|| (width % 2) != 0 || (height % 2) != 0)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet width/height requirements.\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-			break;
-
-		case DXGI_FORMAT_YUY2:
-		case DXGI_FORMAT_Y210:
-		case DXGI_FORMAT_Y216:
-		case DXGI_FORMAT_P208:
-			if ((width % 2) != 0)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet width requirements.\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-			break;
-
-		case DXGI_FORMAT_NV11:
-			if ((width % 4) != 0)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet width requirements.\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-			break;
-
-		case DXGI_FORMAT_AI44:
-		case DXGI_FORMAT_IA44:
-		case DXGI_FORMAT_P8:
-		case DXGI_FORMAT_A8P8:
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Legacy stream video texture formats are not supported by Direct3D.\n");
-			return g_d3d.pink_checkerboard_texture;
-		case DXGI_FORMAT_V208:
-			if ((d3d10ext->resourceDimension != D3D12_RESOURCE_DIMENSION_TEXTURE2D)
-				|| (height % 2) != 0)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Video texture does not meet height requirements.\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-			break;
-
-		default:
-			if (DDSBitsPerPixel(d3d10ext->dxgiFormat) == 0)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Unknown DXGI format (%u)\n", (uint32_t)(d3d10ext->dxgiFormat));
-				return g_d3d.pink_checkerboard_texture;
-			}
-			break;
-		}
-		
-
-		format = d3d10ext->dxgiFormat;
-
-		switch (d3d10ext->resourceDimension)
-		{
-		case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
-			// D3DX writes 1D textures with a fixed Height of 1
-			if ((texture_params.header->flags & DDS_HEIGHT) && height != 1)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: TEXTURE1D height not 1\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-			height = depth = 1;
-			break;
-
-		case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-			if (d3d10ext->miscFlag & 0x4 ) // RESOURCE_MISC_TEXTURECUBE
-			{
-				arraySize *= 6;
-				isCubeMap = true;
-			}
-			depth = 1;
-			break;
-
-		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-			if (!(texture_params.header->flags & DDS_HEADER_FLAGS_VOLUME))
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: TEXTURE3D not flagged as volume\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-
-			if (arraySize > 1)
-			{
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Volume textures are not texture arrays\n");
-				return g_d3d.pink_checkerboard_texture;
-			}
-			break;
-
-		case D3D12_RESOURCE_DIMENSION_BUFFER:
-
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimension buffer type not supported for textures\n");
-			return g_d3d.pink_checkerboard_texture;
-
-		case D3D12_RESOURCE_DIMENSION_UNKNOWN:
-		default:
-
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Unknown resource dimension (%u)\n", (uint32_t)(d3d10ext->resourceDimension));
-			return g_d3d.pink_checkerboard_texture;
-		}
-
-		resDim = (D3D12_RESOURCE_DIMENSION)(d3d10ext->resourceDimension);
-	}
-	else
-	{
-		format = GetDXGIFormat(&texture_params.header->ddspf);
-
-		if (format == DXGI_FORMAT_UNKNOWN)
-		{
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Legacy DDS format not supported\n");
-			return g_d3d.pink_checkerboard_texture;
-		}
-
-		if (texture_params.header->flags & DDS_HEADER_FLAGS_VOLUME)
-		{
-			resDim = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
-		}
-		else
-		{
-			if (texture_params.header->caps2 & DDS_CUBEMAP)
-			{
-				// We require all six faces to be defined
-				if ((texture_params.header->caps2 & DDS_CUBEMAP_ALLFACES) != DDS_CUBEMAP_ALLFACES)
-				{
-					printf("RenderBackend::UploadTextureDDS -- ERROR: DirectX 12 does not support partial cubemaps\n");
-					return g_d3d.pink_checkerboard_texture;
-				}
-
-				arraySize = 6;
-				isCubeMap = true;
-			}
-
-			depth = 1;
-			resDim = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-
-			// Note there's no way for a legacy Direct3D 9 DDS to express a '1D' texture
-		}
-
-		assert(DDSBitsPerPixel(format) != 0);
-	}
-
-	
-	// Bound sizes (for security purposes we don't trust DDS file metadata larger than the Direct3D hardware requirements)
-	if (mipCount > D3D12_REQ_MIP_LEVELS)
-	{
-		printf("RenderBackend::UploadTextureDDS -- ERROR: Too many mipmap levels defined for DirectX 12\n");
-		return g_d3d.pink_checkerboard_texture;
-	}
-
-	switch (resDim)
-	{
-	case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
-		if ((arraySize > D3D12_REQ_TEXTURE1D_ARRAY_AXIS_DIMENSION) ||
-			(width > D3D12_REQ_TEXTURE1D_U_DIMENSION))
-		{
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (1D: array %u, size %u)\n", arraySize, width);
-			return g_d3d.pink_checkerboard_texture;
-		}
-		break;
-
-	case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
-		if (isCubeMap)
-		{
-			// This is the right bound because we set arraySize to (NumCubes*6) above
-			if ((arraySize > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) ||
-				(width > D3D12_REQ_TEXTURECUBE_DIMENSION) ||
-				(height > D3D12_REQ_TEXTURECUBE_DIMENSION))
-			{
-
-				printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (2D cubemap: array %u, size %u by %u)\n", arraySize, width, height);
-				return g_d3d.pink_checkerboard_texture;
-			}
-		}
-		else if ((arraySize > D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION) ||
-			(width > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION) ||
-			(height > D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION))
-		{
-
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (2D: array %u, size %u by %u)\n", arraySize, width, height);
-			return g_d3d.pink_checkerboard_texture;
-		}
-		break;
-
-	case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-		if ((arraySize > 1) ||
-			(width > D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION) ||
-			(height > D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION) ||
-			(depth > D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION))
-		{
-
-			printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimensions too large for DirectX 12 (3D: array %u, size %u by %u by %u)\n", arraySize, width, height, depth);
-			return g_d3d.pink_checkerboard_texture;
-		}
-		break;
-
-	case D3D12_RESOURCE_DIMENSION_BUFFER:
-
-		printf("RenderBackend::UploadTextureDDS -- ERROR: Resource dimension buffer type not supported for textures\n");
-		return g_d3d.pink_checkerboard_texture;
-
-	default:
-
-		printf("RenderBackend::UploadTextureDDS -- ERROR: Unknown resource dimension (%u)\n", (uint32_t)(resDim));
-		return g_d3d.pink_checkerboard_texture;
-	}
-
-	
-	/*  Additional checks not implemented from DirectXTK12
-	const UINT numberOfPlanes = D3D12GetFormatPlaneCount(d3dDevice, format);
-	if (!numberOfPlanes)
-		return E_INVALIDARG;
-
-	if ((numberOfPlanes > 1) && IsDepthStencil(format))
-	{
-		// DirectX 12 uses planes for stencil, DirectX 11 does not
-		return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
-	}
-
-	if (outIsCubeMap != nullptr)
-	{
-		*outIsCubeMap = isCubeMap;
-	}
-	*/
-
-	// convert to srgb if needed
-	if (texture_params.sRGB)
-		format = MakeSRGB(format);
-
-	// decide how many mipmaps to create
-	double fullPowerOf2 = log(width) / log(2);	// what power of two is the full texture size
-	double minPowerOf2 = log(64) / log(2);		// power of two for 64px.  (this is the minimum mip map size we want to use.  Below 64px dds files start to get packed inefficiently into memory and the visual difference is not noticeable .)
-	size_t finalMipCount = lround(fullPowerOf2 - minPowerOf2) + 1;
-
-	resource.texture = RT_CreateTexture(Utf16FromUtf8(temp, texture_resource_name), format, D3D12_RESOURCE_FLAG_NONE, (size_t)width, (uint32_t)height,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, (uint16_t)finalMipCount);
-
-	UploadTextureDataDDS(resource.texture, texture_params.header->width, texture_params.header->height,  DDSBitsPerPixel(format) , finalMipCount, texture_params.bitData);
-
-	resource.descriptors = g_d3d.cbv_srv_uav.Allocate(1);
-	CreateTextureSRV(resource.texture, resource.descriptors.GetCPUDescriptor(0), format, (uint32_t)finalMipCount);
+	CreateTextureSRV(resource.texture, resource.descriptors.GetCPUDescriptor(0), format, resource_mip_count);
 
 	return g_texture_slotmap.Insert(resource);
 }

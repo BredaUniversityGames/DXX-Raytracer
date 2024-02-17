@@ -46,8 +46,7 @@ namespace RT
 	void CopyTexture(ID3D12GraphicsCommandList* command_list, ID3D12Resource* dst, ID3D12Resource* src);
 	void CopyTextureRegion(ID3D12GraphicsCommandList* command_list, ID3D12Resource* dst, uint32_t dst_x, uint32_t dst_y, uint32_t dst_z,
 		const D3D12_TEXTURE_COPY_LOCATION* src_loc, const D3D12_BOX* src_box);
-	void UploadTextureData(ID3D12Resource* dst, size_t row_pitch, size_t row_count, const void* data_ptr);
-	void UploadTextureDataDDS(ID3D12Resource* dst, size_t width, size_t height, size_t bpp, size_t mipCount, const void* data_ptr);
+	void UploadTextureData(ID3D12Resource* dst, size_t width, size_t height, size_t bytes_per_pixel, void *const *mips, size_t mip_count);
 
 	void CreateTextureSRV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format, uint32_t mips = UINT32_MAX);
 	void CreateTextureUAV(ID3D12Resource* resource, D3D12_CPU_DESCRIPTOR_HANDLE descriptor, DXGI_FORMAT format);

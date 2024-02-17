@@ -25,7 +25,6 @@ namespace RenderBackend
 	void DoDebugMenus(const RT_DoRendererDebugMenuParams *params);
 
 	RT_ResourceHandle UploadTexture(const RT_UploadTextureParams& texture_params);
-	RT_ResourceHandle UploadTextureDDS(const RT_UploadTextureParamsDDS& texture_params);
 	RT_ResourceHandle UploadMesh(const RT_UploadMeshParams& mesh_params);
 	void ReleaseTexture(const RT_ResourceHandle texture_handle);
 	void ReleaseMesh(const RT_ResourceHandle mesh_handle);

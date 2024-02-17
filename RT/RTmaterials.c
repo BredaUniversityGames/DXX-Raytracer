@@ -32,11 +32,12 @@
 
 RT_TextureFormat g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_COUNT] =
 {
-	[RT_MaterialTextureSlot_Albedo]    = RT_TextureFormat_SRGBA8,
+	// NOTE(daniel): These formats are kind of misleading with DDS textures, for them we look at them just to know if it's sRGB or not.
+	[RT_MaterialTextureSlot_Albedo]    = RT_TextureFormat_RGBA8_SRGB,
 	[RT_MaterialTextureSlot_Normal]    = RT_TextureFormat_RGBA8,
 	[RT_MaterialTextureSlot_Metalness] = RT_TextureFormat_R8,
 	[RT_MaterialTextureSlot_Roughness] = RT_TextureFormat_R8,
-	[RT_MaterialTextureSlot_Emissive]  = RT_TextureFormat_SRGBA8, // TODO(daniel): Double check emissive textures should be sRGB encoded.
+	[RT_MaterialTextureSlot_Emissive]  = RT_TextureFormat_RGBA8_SRGB, // TODO(daniel): Double check emissive textures should be sRGB encoded.
 };
 
 char *g_rt_texture_slot_names[RT_MaterialTextureSlot_COUNT] =
@@ -160,40 +161,37 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 	{
 		if (load_mask & RT_BITN(i))
 		{
-			
 			// first try loading the compressed dds version of the file if it exists
-			bool ddsLoaded = false;
+			bool dds_loaded = false;
 			RT_ArenaMemoryScope(&g_thread_arena)
 			{
-				char* ddsFile = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
-				
-				uint8_t* ddsData = NULL;  // this is pointer to whole file including header
-				const struct DDS_HEADER* header = NULL;	// pointer to the header (in same buffer as ddsData)
-				const uint8_t* bitData = NULL;		// pointer to the compressed pixel data (in same buffer as ddsData)
-				size_t bitSize = 0;					// size of the compressed pixel data
-				
-				bool fileLoaded = RT_LoadDDSImageFromDisk(&g_thread_arena, ddsFile, &ddsData, &header, &bitData, &bitSize);
+				RT_TextureFormat format = g_rt_material_texture_slot_formats[i];
+				bool is_srgb = (format == RT_TextureFormat_RGBA8_SRGB);
 
-				if (fileLoaded && ddsData)
+				char* dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
+
+				// TODO(daniel): It's dumb that RT_ArenaPrintF doesn't return an RT_String
+				RT_Image image = RT_LoadDDSFromDisk(&g_thread_arena, RT_StringFromCString(dds_file));
+
+				if (is_srgb)
 				{
-					ddsLoaded = true;
+					image.format = RT_TextureFormatToSRGB(image.format);
+				}
 
-					material->textures[i] = RT_UploadTextureDDS(&(RT_UploadTextureParamsDDS) {
-						.header = header,
-						.ddsData = ddsData,
-						.bitData = bitData,
-						.bitSize = bitSize,
-						.sRGB = i == 0 || i == 4,	// set sRGB to true if basecolor or emissive
-						.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)",
-								bm_index, g_rt_texture_slot_names[i], ddsFile)
+				if (image.pixels)
+				{
+					dds_loaded = true;
+
+					material->textures[i] = RT_UploadTexture(&(RT_UploadTextureParams) {
+						.image = image,
+						.name  = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)", bm_index, g_rt_texture_slot_names[i], dds_file),
 					});
 
 					textures_reloaded += 1;
 				}
-
 			}
 
-			if (!ddsLoaded)	// dds file not loaded try png
+			if (!dds_loaded) // dds file not loaded try png
 			{
 				RT_ArenaMemoryScope(&g_thread_arena)
 				{
@@ -201,17 +199,18 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 
 					RT_TextureFormat format = g_rt_material_texture_slot_formats[i];
 
-					int bpp = g_rt_texture_format_bpp[format];
+					bool is_srgb = format == RT_TextureFormat_RGBA8_SRGB;
+					int  bpp     = g_rt_texture_format_bpp[format];
 
-					int w = 0, h = 0, c = 0;
-					unsigned char* pixels = RT_LoadImageFromDisk(&g_thread_arena, file, &w, &h, &c, bpp);
+					RT_Image image = RT_LoadImageFromDisk(&g_thread_arena, file, bpp, is_srgb);
 
-					if (i == RT_MaterialTextureSlot_Emissive)
+					// NOTE(daniel): Mildly sketchy code, that format check is checking it's an uncompressed format.
+					if (i == RT_MaterialTextureSlot_Emissive && image.format == format)
 					{
 						// Premultiply emissive by alpha to avoid white transparent backgrounds from showing...
 
-						uint32_t* at = (uint32_t*)pixels;
-						for (size_t i = 0; i < w * h; i++)
+						uint32_t* at = (uint32_t*)image.pixels;
+						for (size_t i = 0; i < image.width * image.height; i++)
 						{
 							RT_Vec4 color = RT_UnpackRGBA(*at);
 							color.xyz = RT_Vec3Muls(color.xyz, color.w);
@@ -219,16 +218,11 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 						}
 					}
 
-					if (pixels)
+					if (image.pixels)
 					{
 						material->textures[i] = RT_UploadTexture(&(RT_UploadTextureParams) {
-							.format = format,
-								.width = w,
-								.height = h,
-								.pixels = pixels,
-								.pitch = bpp * w,
-								.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)",
-									bm_index, g_rt_texture_slot_names[i], file),
+							.image = image,
+							.name  = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:%s (source: %s)", bm_index, g_rt_texture_slot_names[i], file),
 						});
 
 						textures_reloaded += 1;
@@ -334,11 +328,11 @@ void RT_InitAllBitmaps(void)
                 uint32_t *pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, bitmap);
 
                 material->albedo_texture = RT_UploadTexture(&(RT_UploadTextureParams) {
-                    .width  = bitmap->bm_w,
-                    .height = bitmap->bm_h,
-                    .pixels = pixels,
-                    .name   = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
-                    .format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
+                    .image.width  = bitmap->bm_w,
+                    .image.height = bitmap->bm_h,
+                    .image.pixels = pixels,
+                    .image.format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
+                    .name         = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
                 });
 
 #ifdef RT_DUMP_GAME_BITMAPS

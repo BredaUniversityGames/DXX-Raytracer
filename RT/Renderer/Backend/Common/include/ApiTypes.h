@@ -189,6 +189,54 @@ typedef struct RT_ResourceHandle
 	};
 } RT_ResourceHandle;
 
+typedef enum RT_TextureFormat
+{
+	RT_TextureFormat_RGBA8,
+	RT_TextureFormat_RGBA8_SRGB,
+	RT_TextureFormat_R8,
+
+	// DDS formats
+	RT_TextureFormat_BC1,
+	RT_TextureFormat_BC1_SRGB,
+	RT_TextureFormat_BC2,
+	RT_TextureFormat_BC2_SRGB,
+	RT_TextureFormat_BC3,
+	RT_TextureFormat_BC3_SRGB,
+	RT_TextureFormat_BC4,
+	RT_TextureFormat_BC5,
+	// Skip BC6 because there's no point in supporting HDR textures here.
+	RT_TextureFormat_BC7,
+	RT_TextureFormat_BC7_SRGB,
+} RT_TextureFormat;
+
+static inline RT_TextureFormat RT_TextureFormatToSRGB(RT_TextureFormat format)
+{
+	switch (format)
+	{
+		case RT_TextureFormat_RGBA8: return RT_TextureFormat_RGBA8_SRGB;
+		case RT_TextureFormat_BC1: return RT_TextureFormat_BC1_SRGB;
+		case RT_TextureFormat_BC2: return RT_TextureFormat_BC2_SRGB;
+		case RT_TextureFormat_BC3: return RT_TextureFormat_BC3_SRGB;
+		case RT_TextureFormat_BC7: return RT_TextureFormat_BC7_SRGB;
+	}
+
+	return format;
+}
+
+typedef struct RT_Image
+{
+	RT_TextureFormat format;
+	uint32_t         width;
+	uint32_t         height;
+	uint32_t         pitch;
+	uint32_t         mip_count;
+	union
+	{
+		void *pixels;
+		void *mips[16];
+	};
+} RT_Image;
+
 #define RT_RESOURCE_HANDLE_VALID(handle) (handle.index != 0)
 #define RT_RESOURCE_HANDLES_MATCH(a, b) ((a).value == (b).value)
 
