@@ -638,7 +638,7 @@ int gr_set_mode(u_int32_t mode)
 	grd_curscreen->sc_mode = mode;
 	grd_curscreen->sc_w = w;
 	grd_curscreen->sc_h = h;
-	grd_curscreen->sc_aspect = fixdiv(GameCfg.AspectX, GameCfg.AspectY);
+	grd_curscreen->sc_aspect = fixdiv(grd_curscreen->sc_w * GameCfg.AspectX, grd_curscreen->sc_h * GameCfg.AspectY);
 	gr_init_canvas(&grd_curscreen->sc_canvas, d_realloc(gr_bm_data,w*h), BM_OGL, w, h);
 	gr_set_current_canvas(NULL);
 
