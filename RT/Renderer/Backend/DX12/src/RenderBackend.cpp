@@ -2207,7 +2207,7 @@ namespace
 			RT_Image image = RT_LoadImageFromDisk(temp, path, 4, false);
 
 			g_d3d.blue_noise_textures[blue_noise_index] = RT_CreateTexture(Utf16FromUtf8(temp, path), DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_RESOURCE_FLAG_NONE, (size_t)image.width, (uint32_t)image.height);
-			UploadTextureData(g_d3d.blue_noise_textures[blue_noise_index], image.width, image.height, 4, image.mips, 1);
+			UploadTextureData(g_d3d.blue_noise_textures[blue_noise_index], image.width, image.height, 32, image.mips, 1);
 
 			for (size_t frame_index = 0; frame_index < BACK_BUFFER_COUNT; frame_index++)
 			{
@@ -3444,11 +3444,11 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 		case RT_TextureFormat_BC7_SRGB:   format = DXGI_FORMAT_BC7_UNORM_SRGB;        is_dxt_format = true; break;
 	}
 
-	size_t bytes_per_pixel = DDSBitsPerPixel(format) / 8;
+	size_t bits_per_pixel = DDSBitsPerPixel(format);
 
 	if (!image.pitch)
 	{
-		image.pitch = (uint32_t)(image.width*bytes_per_pixel);
+		image.pitch = (uint32_t)( ( image.width * bits_per_pixel ) / 8 );
 	}
 
 	uint32_t resource_mip_count = RT_MAX(1, image.mip_count);
@@ -3481,7 +3481,7 @@ RT_ResourceHandle RenderBackend::UploadTexture(const RT_UploadTextureParams& tex
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
 		(uint16_t)resource_mip_count);
 
-	UploadTextureData(resource.texture, image.width, image.height, bytes_per_pixel, image.mips, upload_mip_count);
+	UploadTextureData(resource.texture, image.width, image.height, bits_per_pixel, image.mips, upload_mip_count);
 
 	if (generate_mips)
 	{
