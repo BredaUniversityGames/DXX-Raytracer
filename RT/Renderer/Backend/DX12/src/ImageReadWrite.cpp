@@ -279,8 +279,6 @@ RT_Image RT_LoadDDSFromMemory(RT_String memory)
 	result.pitch     = header->pitchOrLinearSize;
 	result.mip_count = RT_MAX(1, header->mipMapCount);
 
-	size_t bytes_per_pixel = bits_per_pixel / 8;
-
 	char *mip_at = data + sizeof(uint32_t) + sizeof(DDS_HEADER) + (header_dxt10 ? sizeof(DDS_HEADER_DXT10) : 0);
 	uint32_t mip_width  = result.width;
 	uint32_t mip_height = result.height;
@@ -295,7 +293,7 @@ RT_Image RT_LoadDDSFromMemory(RT_String memory)
 		result.mips[mip_index] = mip_at;
 
 		// NOTE(daniel): There is an assumption here that rows are tightly packed, it seems.
-		mip_at += mip_width*mip_height*bytes_per_pixel;
+		mip_at += (mip_width * mip_height * bits_per_pixel) / 8;
 		mip_width  /= 2;
 		mip_height /= 2;
 	}

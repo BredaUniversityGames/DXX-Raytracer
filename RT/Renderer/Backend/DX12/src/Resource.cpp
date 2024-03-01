@@ -231,7 +231,7 @@ namespace RT
 		ResourceTransition(command_list, dst, dst_state);
 	}
 
-	void UploadTextureData(ID3D12Resource* dst, size_t width, size_t height, size_t bytes_per_pixel, void *const *mips, size_t mip_count)
+	void UploadTextureData(ID3D12Resource* dst, size_t width, size_t height, size_t bits_per_pixel, void *const *mips, size_t mip_count)
 	{
 		size_t mip_width  = width;
 		size_t mip_height = height;
@@ -252,7 +252,7 @@ namespace RT
 			uint8_t *src_at = (uint8_t *)mips[mip_index];
 			uint8_t *dst_at = alloc.ptr;
 
-			size_t src_byte_size     = mip_width*mip_height*bytes_per_pixel;
+			size_t src_byte_size = (mip_width * mip_height * bits_per_pixel) / 8;
 			size_t src_row_byte_size = src_byte_size / dst_row_count;
 
 			size_t dst_pitch = pitch_footprint.Footprint.RowPitch;
