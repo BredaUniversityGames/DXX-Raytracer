@@ -994,20 +994,22 @@ void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submod
 {
 	if (RT_RESOURCE_HANDLE_VALID(submodel))
 	{
+		float component = 1.0f;
 		float alpha = 1.0f;
 		if (grd_curcanv->cv_fade_level < GR_FADE_OFF)
 		{
+			component = 0.0f;	// cloaked ships should have black materials
 			alpha = 1.0f - (float)grd_curcanv->cv_fade_level / ((float)GR_FADE_LEVELS - 1.0f);
 		}
 
-		RT_Vec4 color = { 1, 1, 1, alpha };
+		RT_Vec4 color = { component, component, component, alpha };
 
 		RT_RenderMeshParams params =
 		{
-			.key         = key,
+			.key = key,
 			.mesh_handle = submodel,
-			.transform   = submodel_transform,
-			.color       = RT_PackRGBA(color),
+			.transform = submodel_transform,
+			.color = RT_PackRGBA(color),
 		};
 		RT_RaytraceMeshEx(&params);
 	}
