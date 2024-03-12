@@ -63,9 +63,15 @@ RT_Triangle RT_TriangleFromIndices(RT_Vertex* verts, int vert_offset, int v0, in
 	return triangle;
 }
 
-void RT_ExtractLightsFromSide(side *side, RT_Vertex *vertices, RT_Vec3 normal, int seg_id)
+void RT_ExtractLightsFromSide(side* side, RT_Vertex* vertices, RT_Vec3 normal, int seg_id)
 {
 	int light_index = RT_IsLight(side->tmap_num2 & 0x3FFF);
+	if (light_index < 0)
+	{
+		light_index = RT_IsLight(side->tmap_num & 0x3FFF);
+	}
+	
+	
 	if (light_index > -1)
 	{
 		RT_Vec2 uv_min = RT_Vec2Make(INFINITY, INFINITY);
