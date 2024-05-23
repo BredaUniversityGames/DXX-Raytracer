@@ -168,7 +168,17 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 				RT_TextureFormat format = g_rt_material_texture_slot_formats[i];
 				bool is_srgb = (format == RT_TextureFormat_RGBA8_SRGB);
 
-				char* dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
+				char* dds_file = NULL;
+
+				// check for dds extension to already be part of texture path.
+				if (strstr(paths->textures[i], ".dds"))
+				{
+					dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s", paths->textures[i]);
+				}
+				else
+				{
+					dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
+				}
 
 				// TODO(daniel): It's dumb that RT_ArenaPrintF doesn't return an RT_String
 				RT_Image image = RT_LoadDDSFromDisk(&g_thread_arena, RT_StringFromCString(dds_file));
@@ -195,7 +205,17 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 			{
 				RT_ArenaMemoryScope(&g_thread_arena)
 				{
-					char* file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.png", paths->textures[i]);
+					char* file = NULL;
+
+					// check for png extension to already be part of texture path.
+					if (strstr(paths->textures[i], ".png"))
+					{
+						file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s", paths->textures[i]);
+					}
+					else
+					{
+						file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.png", paths->textures[i]);
+					}
 
 					RT_TextureFormat format = g_rt_material_texture_slot_formats[i];
 
