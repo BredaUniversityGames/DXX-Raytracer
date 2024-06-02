@@ -26,6 +26,7 @@ typedef struct RT_MaterialPaths
 
 RT_API void RT_InitAllBitmaps(void);
 RT_API int RT_ReloadMaterials(void); // Returns how many textures were reloaded
+RT_API void RT_SyncMaterialStates(void);  // Loads and Unloads textures based on what is needed for the current level.
 
 RT_API RT_Material      g_rt_materials     [RT_MAX_TEXTURES];
 RT_API RT_MaterialPaths g_rt_material_paths[RT_MAX_TEXTURES];

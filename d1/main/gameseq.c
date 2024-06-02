@@ -630,6 +630,10 @@ void LoadLevel(int level_num,int page_in_textures)
 
 	level_name = get_level_file(level_num);
 
+	gr_use_palette_table("palette.256");
+
+	show_boxed_message(TXT_LOADING, 0);
+	
 	if (!load_level(level_name))
 	{
 		Current_level_num = level_num;
@@ -641,9 +645,7 @@ void LoadLevel(int level_num,int page_in_textures)
 #endif
 	}
 
-	gr_use_palette_table( "palette.256" );
-
-	show_boxed_message(TXT_LOADING, 0);
+	
 #ifdef RELEASE
 	timer_delay(F1_0);
 #endif
@@ -1124,7 +1126,9 @@ void StartNewLevelSub(int level_num, int page_in_textures, int secret_flag)
 	if (Newdemo_state == ND_STATE_RECORDING) {
 		newdemo_set_new_level(level_num);
 		newdemo_record_start_frame(FrameTime );
-	} 
+	}
+
+	reset_special_effects(); // JA ... test moved from below to ahead of loadlevel
 
 	LoadLevel(level_num, page_in_textures);
 
@@ -1189,7 +1193,7 @@ void StartNewLevelSub(int level_num, int page_in_textures, int secret_flag)
 	if (!(Game_mode & GM_MULTI) && !cheats.enabled)
 		set_highest_level(Current_level_num);
 
-	reset_special_effects();
+	//reset_special_effects();  JA moved above loadlevel so that wall textures are reset so load level knows which textures to load
 
 #ifdef OGL
 	ogl_cache_level_textures();

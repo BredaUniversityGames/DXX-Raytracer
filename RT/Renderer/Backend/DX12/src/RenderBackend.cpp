@@ -3520,10 +3520,15 @@ RT_ResourceHandle RenderBackend::UploadMesh(const RT_UploadMeshParams& mesh_para
 void RenderBackend::ReleaseTexture(const RT_ResourceHandle texture_handle)
 {
 	TextureResource* texture_resource = g_texture_slotmap.Find(texture_handle);
-	// Note (Justin): This is a dirty little hack to have the resources released after the current frame finished rendering
-	RT_TRACK_TEMP_OBJECT(texture_resource->texture, &g_d3d.command_queue_direct->GetCommandList());
-	g_d3d.cbv_srv_uav.Free(texture_resource->descriptors);
-	g_texture_slotmap.Remove(texture_handle);
+
+	if (texture_resource)
+	{
+		// Note (Justin): This is a dirty little hack to have the resources released after the current frame finished rendering
+		RT_TRACK_TEMP_OBJECT(texture_resource->texture, &g_d3d.command_queue_direct->GetCommandList());
+		g_d3d.cbv_srv_uav.Free(texture_resource->descriptors);
+		g_d3d.resource_tracker.Release(texture_resource->texture);  // JA: added this line so GPU would release texture memory
+		g_texture_slotmap.Remove(texture_handle);
+	}
 }
 
 void RenderBackend::ReleaseMesh(const RT_ResourceHandle mesh_handle)
