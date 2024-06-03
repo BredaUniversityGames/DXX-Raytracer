@@ -49,10 +49,11 @@ char *g_rt_texture_slot_names[RT_MaterialTextureSlot_COUNT] =
 	[RT_MaterialTextureSlot_Emissive]  = "emissive",
 };
 
-RT_Material      g_rt_materials             [RT_MAX_TEXTURES];
-RT_MaterialPaths g_rt_material_paths        [RT_MAX_TEXTURES];
-RT_Material      g_rt_materials_default     [RT_MAX_TEXTURES];
-RT_MaterialPaths g_rt_material_paths_default[RT_MAX_TEXTURES];
+RT_Material				g_rt_materials				[RT_MAX_TEXTURES];
+RT_MaterialPaths		g_rt_material_paths			[RT_MAX_TEXTURES];
+RT_MaterialPathsExist	g_rt_material_paths_exist	[RT_MAX_TEXTURES];
+RT_Material				g_rt_materials_default		[RT_MAX_TEXTURES];
+RT_MaterialPaths		g_rt_material_paths_default	[RT_MAX_TEXTURES];
 
 static int g_rt_last_texture_update_time = 0;
 
@@ -146,6 +147,47 @@ static void RT_ParseMaterialDefinitionFile(int bm_index, RT_Material *material, 
 
 			if (default_roughness) *default_roughness = !has_roughness;
 			if (default_metalness) *default_metalness = !has_metalness;
+		}
+	}
+}
+
+static void RT_VerifyMaterialTexturesFromPaths(uint16_t bm_index, RT_MaterialPaths* paths, RT_MaterialPathsExist* paths_exist, uint32_t load_mask)
+{
+	for (size_t i = 0; i < RT_MaterialTextureSlot_COUNT; i++)
+	{
+		if (load_mask & RT_BITN(i))
+		{
+			// first see if compressed dds version of the file exists
+			RT_ArenaMemoryScope(&g_thread_arena)
+			{
+				char* dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
+
+				FILE* f = fopen(dds_file, "r");
+
+				if (f)
+				{
+					fclose(f);
+					paths->textures[i];
+					paths_exist->textures[i] = true;
+				}
+			}
+
+			if (!paths_exist->textures[i]) // dds file not found try png
+			{
+				RT_ArenaMemoryScope(&g_thread_arena)
+				{
+					char* file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.png", paths->textures[i]);
+
+					FILE* f = fopen(file, "r");
+
+					if (f)
+					{
+						fclose(f);
+						paths->textures[i];
+						paths_exist->textures[i] = true;
+					}
+				}
+			}
 		}
 	}
 }
@@ -264,6 +306,9 @@ void RT_InitAllBitmaps(void)
 		"exp20#0","exp20#1","exp20#2","exp20#3","exp20#4","exp20#5","exp20#6","exp20#7","exp20#8","exp20#9",
 		"exp21#0","exp21#1","exp21#2","exp21#3","exp21#4","exp21#5","exp21#6","exp21#7","exp21#8","exp21#9","exp21#10","exp21#11","exp21#12",
 		"exp22#0","exp22#1","exp22#2","exp22#3","exp22#4","exp22#5","exp22#6","exp22#7","exp22#8","exp22#9",
+		"eye01#0","eye01#1","eye01#2","eye01#3","eye01#4","eye01#5",
+		"eye02#0","eye02#1","eye02#2","eye02#3","eye02#4","eye02#5","eye02#6","eye02#7","eye02#8","eye02#9","eye02#10",
+		"eye03#0","eye03#1","eye03#2","eye03#3","eye03#4","eye03#5","eye03#6","eye03#7","eye03#8","eye03#9",
 		"fusion#0","fusion#1","fusion#2","fusion#3","fusion#4","fusion#5","fusion#6","fusion#7","fusion#8","fusion#9","fusion#10","fusion#11","fusion#12","fusion#13","fusion#14",
 		"gauge01#0","gauge01#1","gauge01#2","gauge01#3","gauge01#4","gauge01#5","gauge01#6","gauge01#7","gauge01#8","gauge01#9","gauge01#10","gauge01#11","gauge01#12","gauge01#13","gauge01#14","gauge01#15","gauge01#16","gauge01#17","gauge01#18","gauge01#19",
 		"gauge02#0","gauge02#1","gauge02#2","gauge02#3","gauge02#4",
@@ -390,9 +435,11 @@ void RT_InitAllBitmaps(void)
             // Try to load the material definition
 			RT_Material *material = &g_rt_materials[bm_index];
 			RT_MaterialPaths *paths = &g_rt_material_paths[bm_index];
+			RT_MaterialPathsExist* paths_exist = &g_rt_material_paths_exist[bm_index];
 
 			// ------------------------------------------------------------------
 			// Initialize all the defaults
+			material->texture_load_state = RT_MaterialTextureLoadState_Unloaded;
 
 			material->metalness = 0.0f;
 			material->roughness = 0.8f;
@@ -419,14 +466,9 @@ void RT_InitAllBitmaps(void)
 			bool default_metalness, default_roughness;
             RT_ParseMaterialDefinitionFile(bm_index, material, paths, &default_metalness, &default_roughness);
 
-			if (material->always_load_texture)
-			{
-				// only load textures at this point that always need to be loaded... the rest will be loaded during level load
-				RT_LoadMaterialTexturesFromPaths(bm_index, material, paths, ~0u);
-				material->texture_load_state = RT_MaterialTextureLoadState_Loaded;
-			}
+			RT_VerifyMaterialTexturesFromPaths(bm_index, paths, paths_exist, ~0u);
 
-			if (default_metalness && RT_RESOURCE_HANDLE_VALID(material->metalness_texture))
+			if (default_metalness && paths_exist->metalness_texture)
 			{
 				material->metalness = 1.0f;
 				// AND ALSO make note of this quirk for the defaults, where after all that we should store the default
@@ -434,36 +476,16 @@ void RT_InitAllBitmaps(void)
 				g_rt_materials_default[bm_index].metalness = material->metalness;
 			}
 
-			if (default_roughness && RT_RESOURCE_HANDLE_VALID(material->roughness_texture))
+			if (default_roughness && paths_exist->roughness_texture)
 			{
 				material->roughness = 1.0f;
 				// AND ALSO make note of this quirk for the defaults, where after all that we should store the default
 				// metalness and roughness if it was affected by whether or not there was a metal/roughness map:
 				g_rt_materials_default[bm_index].roughness = material->roughness;
 			}
-
-			if (!RT_RESOURCE_HANDLE_VALID(material->albedo_texture))
-			{
-                uint32_t *pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, bitmap);
-
-                material->albedo_texture = RT_UploadTexture(&(RT_UploadTextureParams) {
-                    .image.width  = bitmap->bm_w,
-                    .image.height = bitmap->bm_h,
-                    .image.pixels = pixels,
-                    .image.format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
-                    .name         = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
-                });
-
-#ifdef RT_DUMP_GAME_BITMAPS
-				{
-					const char *png_path = RT_ArenaPrintF(&g_thread_arena, "assets/texture_dump/%s.png", bitmap_name);
-					RT_WritePNGToDisk(png_path, bitmap->bm_w, bitmap->bm_h, 4, pixels, 4*bitmap->bm_w);
-				}
-#endif
-			}
-
-			RT_UpdateMaterial(bm_index, material);
 		}
+
+		RT_SyncMaterialStates();
 
 	}
 	piggy_bitmap_page_out_all();
@@ -588,110 +610,23 @@ void RT_SyncMaterialStates(void)
 		RT_Material* material = &g_rt_materials[bm_index];
 		RT_MaterialPaths* paths = &g_rt_material_paths[bm_index];
 
-		if (!material->always_load_texture && material->texture_load_state != material->texture_load_state_next)
+		if (material->always_load_texture || ( material->texture_load_state != material->texture_load_state_next))
 		{
-			if (material->texture_load_state == RT_MaterialTextureLoadState_Unloaded && material->texture_load_state_next == RT_MaterialTextureLoadState_Loaded)
+			if ((material->always_load_texture && material->texture_load_state == RT_MaterialTextureLoadState_Unloaded) || (material->texture_load_state == RT_MaterialTextureLoadState_Unloaded && material->texture_load_state_next == RT_MaterialTextureLoadState_Loaded ) )
 			{
 				// Load the material
 
-				grs_bitmap* bitmap = &GameBitmaps[bm_index];
-
-				if (bitmap->bm_w == 0 ||
-					bitmap->bm_h == 0)
-				{
-					continue;
-				}
-
-				PIGGY_PAGE_IN((bitmap_index) { bm_index });
-
 				RT_ArenaMemoryScope(&g_thread_arena)
 				{
-					if (bitmap->bm_flags & BM_FLAG_RLE)
-					{
-						bitmap = rle_expand_texture(bitmap);
-					}
-
-					if (bitmap->bm_flags & BM_FLAG_RLE)
-					{
-						bitmap = rle_expand_texture(bitmap);
-					}
-
-					// ------------------------------------------------------------------
-					// Initialize all the defaults
-
-					material->metalness = 0.0f;
-					material->roughness = 0.8f;
-					material->emissive_color = RT_Vec3FromScalar(1.0f);
-					material->emissive_strength = 1.0f;
-
-					if (strstr(bitmap_name, "metl"))
-					{
-						material->metalness = 1.0f;
-						material->roughness = 0.5f;
-					}
-
-					snprintf(paths->albedo_texture, sizeof(paths->albedo_texture), "%s_basecolor", bitmap_name);
-					snprintf(paths->normal_texture, sizeof(paths->normal_texture), "%s_normal", bitmap_name);
-					snprintf(paths->metalness_texture, sizeof(paths->metalness_texture), "%s_metallic", bitmap_name);
-					snprintf(paths->roughness_texture, sizeof(paths->roughness_texture), "%s_roughness", bitmap_name);
-					snprintf(paths->emissive_texture, sizeof(paths->emissive_texture), "%s_emissive", bitmap_name);
-
-					// ------------------------------------------------------------------
-
-					memcpy(&g_rt_materials_default[bm_index], material, sizeof(*material));
-					memcpy(&g_rt_material_paths_default[bm_index], paths, sizeof(*paths));
-
-
-					bool default_metalness, default_roughness;
-					RT_ParseMaterialDefinitionFile(bm_index, material, paths, &default_metalness, &default_roughness);
-
-
+					
 					RT_LoadMaterialTexturesFromPaths(bm_index, material, paths, ~0u);
-					material->texture_load_state = RT_MaterialTextureLoadState_Loaded;
-
-
-					if (default_metalness && RT_RESOURCE_HANDLE_VALID(material->metalness_texture))
-					{
-						material->metalness = 1.0f;
-						// AND ALSO make note of this quirk for the defaults, where after all that we should store the default
-						// metalness and roughness if it was affected by whether or not there was a metal/roughness map:
-						g_rt_materials_default[bm_index].metalness = material->metalness;
-					}
-
-					if (default_roughness && RT_RESOURCE_HANDLE_VALID(material->roughness_texture))
-					{
-						material->roughness = 1.0f;
-						// AND ALSO make note of this quirk for the defaults, where after all that we should store the default
-						// metalness and roughness if it was affected by whether or not there was a metal/roughness map:
-						g_rt_materials_default[bm_index].roughness = material->roughness;
-					}
-
-					if (!RT_RESOURCE_HANDLE_VALID(material->albedo_texture))
-					{
-						uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, bitmap);
-
-						material->albedo_texture = RT_UploadTexture(&(RT_UploadTextureParams) {
-							.image.width = bitmap->bm_w,
-								.image.height = bitmap->bm_h,
-								.image.pixels = pixels,
-								.image.format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
-								.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
-						});
-
-#ifdef RT_DUMP_GAME_BITMAPS
-						{
-							const char* png_path = RT_ArenaPrintF(&g_thread_arena, "assets/texture_dump/%s.png", bitmap_name);
-							RT_WritePNGToDisk(png_path, bitmap->bm_w, bitmap->bm_h, 4, pixels, 4 * bitmap->bm_w);
-						}
-#endif
-					}
-
+					
 					material->texture_load_state = RT_MaterialTextureLoadState_Loaded;
 
 					RT_UpdateMaterial(bm_index, material);
 				}
 			}
-			else if (material->texture_load_state == RT_MaterialTextureLoadState_Loaded && material->texture_load_state_next == RT_MaterialTextureLoadState_Unloaded)
+			else if (!material->always_load_texture && (material->texture_load_state == RT_MaterialTextureLoadState_Loaded && material->texture_load_state_next == RT_MaterialTextureLoadState_Unloaded) )
 			{
 				// Unload the material
 				for (size_t i = 0; i < RT_MaterialTextureSlot_COUNT; i++)
@@ -702,20 +637,21 @@ void RT_SyncMaterialStates(void)
 				}
 				material->texture_load_state = RT_MaterialTextureLoadState_Unloaded;
 
+				RT_UpdateMaterial(bm_index, material);
+				
 				// load the original low res texture (for the material viewer)
-
-				grs_bitmap* bitmap = &GameBitmaps[bm_index];
-
-				if (bitmap->bm_w == 0 ||
-					bitmap->bm_h == 0)
-				{
-					continue;
-				}
-
-				PIGGY_PAGE_IN((bitmap_index) { bm_index });
-
 				RT_ArenaMemoryScope(&g_thread_arena)
 				{
+					grs_bitmap* bitmap = &GameBitmaps[bm_index];
+
+					if (bitmap->bm_w == 0 ||
+						bitmap->bm_h == 0)
+					{
+						continue;
+					}
+
+					PIGGY_PAGE_IN((bitmap_index) { bm_index });
+
 					if (bitmap->bm_flags & BM_FLAG_RLE)
 					{
 						bitmap = rle_expand_texture(bitmap);
@@ -735,14 +671,68 @@ void RT_SyncMaterialStates(void)
 							.image.format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
 							.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
 					});
+
+#ifdef RT_DUMP_GAME_BITMAPS
+					{
+						const char* png_path = RT_ArenaPrintF(&g_thread_arena, "assets/texture_dump/%s.png", bitmap_name);
+						RT_WritePNGToDisk(png_path, bitmap->bm_w, bitmap->bm_h, 4, pixels, 4 * bitmap->bm_w);
+					}
+#endif
 				}
 
-				
 				RT_UpdateMaterial(bm_index, material);
 			}
 		}
 
+		// ensure that an albedo texture is present, if not load the original texture (mainly for material viewer)
 		
+		if (!RT_RESOURCE_HANDLE_VALID(material->albedo_texture))
+		{
+			RT_ArenaMemoryScope(&g_thread_arena)
+			{
+				grs_bitmap* bitmap = &GameBitmaps[bm_index];
+
+				if (bitmap->bm_w == 0 ||
+					bitmap->bm_h == 0)
+				{
+					continue;
+				}
+
+				PIGGY_PAGE_IN((bitmap_index) { bm_index });
+
+
+				if (bitmap->bm_flags & BM_FLAG_RLE)
+				{
+					bitmap = rle_expand_texture(bitmap);
+				}
+
+				if (bitmap->bm_flags & BM_FLAG_RLE)
+				{
+					bitmap = rle_expand_texture(bitmap);
+				}
+
+				uint32_t* pixels = dx12_load_bitmap_pixel_data(&g_thread_arena, bitmap);
+
+				material->albedo_texture = RT_UploadTexture(&(RT_UploadTextureParams) {
+					.image.width = bitmap->bm_w,
+						.image.height = bitmap->bm_h,
+						.image.pixels = pixels,
+						.image.format = g_rt_material_texture_slot_formats[RT_MaterialTextureSlot_Albedo],
+						.name = RT_ArenaPrintF(&g_thread_arena, "Game Texture %hu:basecolor (original)", bm_index),
+				});
+
+#ifdef RT_DUMP_GAME_BITMAPS
+				{
+					const char* png_path = RT_ArenaPrintF(&g_thread_arena, "assets/texture_dump/%s.png", bitmap_name);
+					RT_WritePNGToDisk(png_path, bitmap->bm_w, bitmap->bm_h, 4, pixels, 4 * bitmap->bm_w);
+				}
+#endif
+			}
+			
+			RT_UpdateMaterial(bm_index, material);
+		}
 	}
+
+	piggy_bitmap_page_out_all();
 }
 
