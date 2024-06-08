@@ -186,7 +186,7 @@ int gr_set_mode(u_int32_t mode)
 	grd_curscreen->sc_mode = mode;
 	grd_curscreen->sc_w = w;
 	grd_curscreen->sc_h = h;
-	grd_curscreen->sc_aspect = fixdiv(GameCfg.AspectX, GameCfg.AspectY);
+	grd_curscreen->sc_aspect = fixdiv(grd_curscreen->sc_w * GameCfg.AspectX, grd_curscreen->sc_h * GameCfg.AspectY);
 	gr_init_canvas(&grd_curscreen->sc_canvas, d_realloc(gr_bm_data, w * h), BM_RTDX12, w, h);
 	gr_set_current_canvas(NULL);
 
@@ -994,20 +994,22 @@ void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submod
 {
 	if (RT_RESOURCE_HANDLE_VALID(submodel))
 	{
+		float component = 1.0f;
 		float alpha = 1.0f;
 		if (grd_curcanv->cv_fade_level < GR_FADE_OFF)
 		{
+			component = 0.0f;	// cloaked ships should have black materials
 			alpha = 1.0f - (float)grd_curcanv->cv_fade_level / ((float)GR_FADE_LEVELS - 1.0f);
 		}
 
-		RT_Vec4 color = { 1, 1, 1, alpha };
+		RT_Vec4 color = { component, component, component, alpha };
 
 		RT_RenderMeshParams params =
 		{
-			.key         = key,
+			.key = key,
 			.mesh_handle = submodel,
-			.transform   = submodel_transform,
-			.color       = RT_PackRGBA(color),
+			.transform = submodel_transform,
+			.color = RT_PackRGBA(color),
 		};
 		RT_RaytraceMeshEx(&params);
 	}

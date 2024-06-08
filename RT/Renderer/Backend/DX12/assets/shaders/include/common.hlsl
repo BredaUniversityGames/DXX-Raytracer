@@ -768,6 +768,10 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 	};
 	float2 uv = GetHitAttribute(uvs, barycentrics);
 	float2 uv_rotated = GetRotatedUVs(orient, uv);
+	float4 color = UnpackRGBA(instance_data.material_color);
+	float4 tri_color = UnpackRGBA(hit_triangle.color);
+	float base_alpha = color.a * tri_color.a;
+	float  dither = RandomSample(pixel_pos, instance_idx);
 
 	// TODO(daniel): Clean this messy silly code up!
 	if (material_index2 != 0xFFFFFFFF)
@@ -783,10 +787,10 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 			return true;
 		}
 
-		if (albedo2.a > 0.0)
+		if (albedo2.a >= dither)
 		{
-			material_index = material_index2;
-			uv = uv_rotated;
+			material = g_materials[material_index2];
+			return dither >= base_alpha;
 		}
 	}
 
@@ -794,18 +798,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 	Texture2D tex_albedo = GetTextureFromIndex(material.albedo_index);
 	float4 albedo = tex_albedo.SampleLevel(g_sampler_point_wrap, uv, 0);
 
-	if (albedo.a == 0.0)
-	{
-		return true;
-	}
-	else
-	{
-		float4 color = UnpackRGBA(instance_data.material_color);
-		float4 tri_color = UnpackRGBA(hit_triangle.color);
-		float  dither = RandomSample(pixel_pos, instance_idx);
-
-		return dither > color.a * tri_color.a;
-	}
+	return dither >= albedo.a * base_alpha;
 }
 
 // -----------------------------------------------------------
