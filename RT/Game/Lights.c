@@ -54,6 +54,7 @@ static RT_SettingsNotification g_headlights_notification;
 RT_LightDefinition g_light_definitions[] =
 {
 	// White light fixtures
+	
 	{
 		.name = "ceil002",
 		.kind = RT_LightKind_Area_Rect,
@@ -81,7 +82,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil020",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,0.f},
 		.radius = 0.3f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -90,7 +91,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil021",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.5f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -98,7 +99,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil023",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.5f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -114,7 +115,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil025",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.3f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -122,7 +123,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil026",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.3f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -130,7 +131,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil027",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.3f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -170,7 +171,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil034",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.8f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -178,7 +179,7 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil035",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {2.f,2.f,2.f},
 		.radius = 0.8f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
@@ -186,11 +187,61 @@ RT_LightDefinition g_light_definitions[] =
 	{
 		.name = "ceil036",
 		.kind = RT_LightKind_Area_Rect,
-		.emission = {8.f,8.f,8.f},
+		.emission = {4.f,4.f,4.f},
 		.radius = 0.8f,
 		.spot_angle = 0.3f,
 		.spot_softness = 0.2f,
 	},
+	{
+		.name = "metl126",
+		.kind = RT_LightKind_Area_Rect,
+		.emission = {2.f,2.f,2.f},
+		.radius = 0.8f,
+		.spot_angle = 0.3f,
+		.spot_softness = 0.2f,
+	},
+	// Blue lights on metl material.
+	{
+		.name = "metl078",
+		.kind = RT_LightKind_Area_Rect,
+		.emission = {1.5f,1.5f,2.f},
+		.radius = 0.8f,
+		.spot_angle = 0.3f,
+		.spot_softness = 0.2f,
+	},
+	{
+		.name = "metl079",
+		.kind = RT_LightKind_Area_Rect,
+		.emission = {.75f,.75f,1.5f},
+		.radius = 0.8f,
+		.spot_angle = 0.3f,
+		.spot_softness = 0.2f,
+	},
+	{
+		.name = "metl080",
+		.kind = RT_LightKind_Area_Rect,
+		.emission = {.75f,.75f,1.5f},
+		.radius = 0.8f,
+		.spot_angle = 0.3f,
+		.spot_softness = 0.2f,
+	},
+	{
+		.name = "metl089",
+		.kind = RT_LightKind_Area_Rect,
+		.emission = {.75f,.75f,1.5f},
+		.radius = 0.8f,
+		.spot_angle = 0.3f,
+		.spot_softness = 0.2f,
+	},
+	{
+		.name = "metl090",
+		.kind = RT_LightKind_Area_Rect,
+		.emission = {.75f,.75f,1.5f},
+		.radius = 0.8f,
+		.spot_angle = 0.3f,
+		.spot_softness = 0.2f,
+	},
+	
 };
 
 static RT_LightDefinition g_default_light_definitions[RT_ARRAY_COUNT(g_light_definitions)];
@@ -230,6 +281,13 @@ void RT_ResetLightSettings()
 
 int RT_IsLight(int tmap) 
 {
+	char name[13] = {0};
+
+	//piggy_get_bitmap_name(Textures[tmap].index, name);
+	//printf("texture index:%d, texture name:%s\n", tmap, name);
+
+
+
 	//TODO: If this starts to become a performance bottleneck, add a hashmap so the lookups can be done in O(1)
 	for (int i = 0; i < RT_ARRAY_COUNT(g_light_definitions); i++)
 	{
