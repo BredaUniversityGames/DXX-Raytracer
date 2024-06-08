@@ -171,7 +171,7 @@ static int RT_LoadMaterialTexturesFromPaths(uint16_t bm_index, RT_Material *mate
 				char* dds_file = NULL;
 
 				// check for dds extension to already be part of texture path.
-				if (strstr(paths->textures[i], ".dds"))
+				if (strstr(paths->textures[i], ".dds") || strstr(paths->textures[i], ".png"))
 				{
 					dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s", paths->textures[i]);
 				}
