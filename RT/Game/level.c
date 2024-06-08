@@ -14,7 +14,9 @@
 
 #include "Core/MiniMath.h"
 #include "Core/Arena.h"
+#include "Core/String.h"
 #include "RTgr.h"
+#include "RTmaterials.h"
 #include "Renderer.h"
 #include "Lights.h"
 
@@ -120,6 +122,14 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 {
 	RT_ResourceHandle level_handle = {0};
 
+	// set all textures next/future state to not loaded
+	for (uint16_t bm_index = 1; bm_index < MAX_BITMAP_FILES; bm_index++)
+	{
+		RT_Material* def = &g_rt_materials[bm_index];
+		if (!def->always_load_texture)
+			def->texture_load_state_next = RT_MaterialTextureLoadState_Unloaded;
+	}
+
 	RT_ArenaMemoryScope(&g_thread_arena)
 	{
 		RT_Vertex* verts = RT_ArenaAllocArray(&g_thread_arena, Num_segments * 6 * 4, RT_Vertex);
@@ -209,6 +219,67 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 				}
 				
 				RT_ExtractLightsFromSide(s, &verts[vertex_offset], triangles[num_triangles - 1].normal0, seg_id);
+
+				// Set tmaps next/future state to loaded so they will be loaded into memory
+				for (char topbottom = 0; topbottom < 2; topbottom++)
+				{
+					// convert tmap_num to bitmap index
+
+					ushort bm_index;
+					if (topbottom == 0)
+						bm_index = Textures[s->tmap_num & 0x3FFF].index;
+					else if ( (s->tmap_num2 & 0x3FFF) != 0)
+						bm_index = Textures[s->tmap_num2 & 0x3FFF].index;
+					else
+					{
+						// No overlay texture found
+						continue;
+					}
+
+					
+					// get the bitmap name
+					char bitmap_name[13];
+					piggy_get_bitmap_name(bm_index, bitmap_name);
+					
+					// check if material is part of an animation sequence and set all the frames of the material to load as well
+					const char* pound_pos = strchr(bitmap_name, '#');
+					if (pound_pos)
+					{
+						// texture animation found
+						int char_count = pound_pos - bitmap_name;  // subtract the two pointers to get the length
+
+						char animation_root_name[13];
+						RT_SaneStrncpy(animation_root_name, bitmap_name, char_count + 2);
+
+						int frame_num = 0;
+						char animation_frame_name[13];
+						bitmap_index frame_index;
+						frame_index.index = 0;
+
+						//
+						do
+						{
+							sprintf(animation_frame_name, "%s%d", animation_root_name, frame_num);
+
+							frame_index = piggy_find_bitmap(animation_frame_name);
+
+							RT_Material* def = &g_rt_materials[frame_index.index];
+							if (frame_index.index != 0 && !def->always_load_texture)
+								def->texture_load_state_next = RT_MaterialTextureLoadState_Loaded;
+
+							frame_num++;
+
+						} while (frame_index.index != 0);
+					}
+					else // not part of animation sequence... just set the one texture to load
+					{
+						// set this material to load
+						RT_Material* def = &g_rt_materials[bm_index];
+						if (!def->always_load_texture)
+							def->texture_load_state_next = RT_MaterialTextureLoadState_Loaded;
+					}
+				}
+				
 			}
 		}
 
@@ -225,6 +296,9 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 		RT_LOGF(RT_LOGSERVERITY_INFO, "UPLOADING MESH >>\n");
 		level_handle = RT_UploadMesh(&params);
 		RT_LOGF(RT_LOGSERVERITY_INFO, "UPLOADING MESH OK\n");
+
+		// load and unload materials based on if they are needed for this level.
+		RT_SyncMaterialStates();
 	}
 
 	return level_handle;
@@ -255,6 +329,7 @@ bool RT_LoadLevel()
 		assert(!RT_RESOURCE_HANDLE_VALID(g_level_resource));
 		// Load level geometry
 		g_level_resource = RT_UploadLevelGeometry();
+		RT_ResetLightEmission();		// added this here as resetting light emission was getting skipped when doing a level warp
 		g_active_level = Current_level_num;
 
 		return RT_RESOURCE_HANDLE_VALID(g_level_resource);
