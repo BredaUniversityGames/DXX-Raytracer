@@ -10,7 +10,7 @@ DXX Raytracer is a fork of the [DXX Retro](https://github.com/CDarrow/DXX-Retro)
 
 Extract the zip file to a location of your choosing, and just run descent1.exe to play! This build of the game uses the shareware assets. If you have bought the original version of Descent 1995, you can replace the descent.pig and descent.hog files with your versions to play the whole game.
 
-**IMPORTANT**: Versions older than 1.1.0 will crash on NVIDIA graphics cards, which has been fixed in the 1.1.0 release.
+**IMPORTANT**: Versions older than 1.1.0 will crash on NVIDIA graphics cards with drivers newer than November 2023, which has been fixed in the 1.1.0 release.
 
 ## Features
 - Physically-based rendering
