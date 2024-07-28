@@ -19,6 +19,7 @@ typedef struct RT_MaterialPaths
 			char metalness_texture[256];
 			char roughness_texture[256];
 			char emissive_texture [256];
+            char height_texture[256];
         };
         char textures[RT_MaterialTextureSlot_COUNT][256];
     };
@@ -35,6 +36,7 @@ typedef struct RT_MaterialPathsExist
             bool metalness_texture;
             bool roughness_texture;
             bool emissive_texture;
+            bool height_texture;
         };
         bool textures[RT_MaterialTextureSlot_COUNT];
     };

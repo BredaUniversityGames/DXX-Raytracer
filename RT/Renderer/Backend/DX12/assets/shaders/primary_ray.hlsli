@@ -133,6 +133,71 @@ void GetHitGeometryFromRay(RayDesc ray,
         GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
         Material hit_material = g_materials[OUT.material_index];
 
+        // ==========================================================================
+        // parallax mapping
+        // ==========================================================================
+        if (tweak.enable_parallax_mapping)
+        {
+            Texture2D tex_height = GetTextureFromIndex(hit_material.height_index);
+
+            float3 bitangent = cross(normalize(tangent), normalize(interpolated_normal)) * OUT.hit_triangle.tangent0.w;
+
+            float3x3 rayTBN = float3x3(normalize(tangent.xyz), normalize(bitangent), normalize(interpolated_normal));
+
+            float3 viewDir = normalize(mul(rayTBN, normalize(ray.Direction.xyz)));
+
+            //Steep Parallax
+            const float minLayers = 8.0;
+            const float maxLayers = 64.0;
+
+            // reduce the number of layers by angle (if we are looking straight at the surface we don't need as many layers)
+            float numLayers = lerp(maxLayers, minLayers, max(dot(float3(0.0, 0.0, 1.0), viewDir), 0.0));
+
+            float layerDepth = 1.0 / numLayers;
+
+            float currentLayerDepth = 0.5;  // start the search in the middle of the height map.
+            float2 currentUV = uv;
+            float currentDepthMapValue = (tex_height.SampleLevel(g_sampler_linear_wrap, currentUV, 0).r);
+
+            float prevLayerDepth = 0;
+            float2 prevUV = (float2)0;
+            float prevDepthMapValue = 0;
+
+            // check to see if layerdepth is less than depthmapvalue.  If so the parallax should pop out, otherwise it should recess in.  
+            // In other words popout will control the direction we search for the correct layerdepth
+            bool popout = currentLayerDepth < currentDepthMapValue;
+
+            float2 P = viewDir.xy * 0.2;  // search down
+
+            if (popout)  // reverse search to up.
+            {
+                P *= -1.0;
+                layerDepth *= -1.0;
+            }
+
+            float2 deltaUV = (P / numLayers);
+
+            while (currentLayerDepth < currentDepthMapValue == popout)  // if we were originally below depthmapvalue... see if we are now above, if we were above depthmapvalue... see if we are now below.
+            {
+                prevUV = currentUV;
+                prevDepthMapValue = currentDepthMapValue;
+                prevLayerDepth = currentLayerDepth;
+
+                currentUV += deltaUV;
+                currentDepthMapValue = (tex_height.SampleLevel(g_sampler_linear_wrap, currentUV, 0).r);
+                currentLayerDepth -= layerDepth;
+            }
+
+            // Occlusion Pass 
+            float currentDepthDiff = currentLayerDepth - currentDepthMapValue;
+            float prevDepthDiff = prevDepthMapValue - prevLayerDepth;
+            float totalDepthDiff = currentDepthDiff + prevDepthDiff;
+
+            float weight = prevDepthDiff / totalDepthDiff;
+
+            uv = prevUV + (deltaUV * weight);
+        }
+
         float3 emissive_factor = UnpackRGBE(hit_material.emissive_factor);
 		float4 color_mod = UnpackRGBA(OUT.instance_data.material_color)*UnpackRGBA(OUT.hit_triangle.color);
 

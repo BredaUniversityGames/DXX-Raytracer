@@ -2336,6 +2336,24 @@ namespace
 		}
 
 		// ------------------------------------------------------------------
+		// Create gray debug texture
+
+		{
+			uint32_t pixels[] = { 0xFF808080 };  // medium gray
+
+			RT_UploadTextureParams gray_texture_params = {};
+			RT_Image& image = gray_texture_params.image;
+			image.width = 1;
+			image.height = 1;
+			image.pixels = pixels;
+			image.format = RT_TextureFormat_RGBA8;
+			gray_texture_params.name = "Gray Texture";
+
+			g_d3d.gray_texture_handle = RenderBackend::UploadTexture(gray_texture_params);
+			g_d3d.gray_texture = g_texture_slotmap.Find(g_d3d.gray_texture_handle);
+		}
+
+		// ------------------------------------------------------------------
 		// Create default normal texture
 
 		{
@@ -3573,6 +3591,11 @@ uint16_t RenderBackend::UpdateMaterial(uint16_t material_index, const RT_Materia
 		if (!emissive)
 			emissive = g_d3d.black_texture;
 
+		TextureResource* height = g_texture_slotmap.Find(material->height_texture);
+
+		if (!height)
+			height = g_d3d.gray_texture;
+
 		RT_Vec3 emissive_factor = material->emissive_color;
 		emissive_factor = RT_Vec3Muls(emissive_factor, material->emissive_strength);
 
@@ -3582,6 +3605,7 @@ uint16_t RenderBackend::UpdateMaterial(uint16_t material_index, const RT_Materia
 		gpu_material->metalness_index  = metalness->descriptors.heap_offset;
 		gpu_material->roughness_index  = roughness->descriptors.heap_offset;
 		gpu_material->emissive_index   = emissive->descriptors.heap_offset;
+		gpu_material->height_index     = height->descriptors.heap_offset;
 		gpu_material->metalness_factor = material->metalness;
 		gpu_material->roughness_factor = material->roughness;
 		gpu_material->emissive_factor  = RT_PackRGBE(emissive_factor);

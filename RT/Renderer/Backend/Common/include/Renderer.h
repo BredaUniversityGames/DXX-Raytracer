@@ -235,6 +235,7 @@ typedef enum RT_MaterialTextureSlot
     RT_MaterialTextureSlot_Metalness,
     RT_MaterialTextureSlot_Roughness,
     RT_MaterialTextureSlot_Emissive,
+	RT_MaterialTextureSlot_Height,
     RT_MaterialTextureSlot_COUNT
 } RT_MaterialTextureSlot;
 
@@ -255,6 +256,7 @@ typedef struct RT_Material
 			RT_ResourceHandle metalness_texture;
 			RT_ResourceHandle roughness_texture;
 			RT_ResourceHandle emissive_texture;
+			RT_ResourceHandle height_texture;
 		};
 		RT_ResourceHandle textures[RT_MaterialTextureSlot_COUNT];
 	};
