@@ -238,6 +238,12 @@ typedef enum RT_MaterialTextureSlot
     RT_MaterialTextureSlot_COUNT
 } RT_MaterialTextureSlot;
 
+typedef enum RT_MaterialTextureLoadState
+{
+	RT_MaterialTextureLoadState_Unloaded,
+	RT_MaterialTextureLoadState_Loaded
+} RT_MaterialTextureLoadState;
+
 typedef struct RT_Material
 {
 	union
@@ -257,6 +263,9 @@ typedef struct RT_Material
 	RT_Vec3 emissive_color;
 	float emissive_strength;
 	uint32_t flags;
+	bool always_load_texture;
+	RT_MaterialTextureLoadState texture_load_state;
+	RT_MaterialTextureLoadState texture_load_state_next;  // used when loading level to determine if the texture should be loaded or unloaded
 } RT_Material;
 
 typedef struct RT_SceneSettings
