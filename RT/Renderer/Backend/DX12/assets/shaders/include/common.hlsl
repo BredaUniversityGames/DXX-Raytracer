@@ -771,7 +771,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 	float4 color = UnpackRGBA(instance_data.material_color);
 	float4 tri_color = UnpackRGBA(hit_triangle.color);
 	float base_alpha = color.a * tri_color.a;
-	float  dither = RandomSample(pixel_pos, instance_idx);
+	float  dither = RandomSample(pixel_pos, instance_idx) * 0.99;  // NOTE: dither is multiplied by .99 because dither should never be 1.0 (You end up with single pixel holes in geometry)
 
 	// TODO(daniel): Clean this messy silly code up!
 	if (material_index2 != 0xFFFFFFFF)
@@ -787,7 +787,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 			return true;
 		}
 
-		if (albedo2.a >= dither)
+		if ( dither >= albedo2.a )
 		{
 			material = g_materials[material_index2];
 			return dither >= base_alpha;
