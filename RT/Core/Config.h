@@ -35,6 +35,7 @@ typedef struct RT_Config
 } RT_Config;
 
 RT_API void RT_InitializeConfig(RT_Config *cfg, RT_Arena *arena);
+RT_API bool RT_DeserializeConfigFromVault(RT_Config* cfg, const char* file_name);
 RT_API bool RT_DeserializeConfigFromFile(RT_Config *cfg, const char *file_name);
 RT_API void RT_DeserializeConfigFromString(RT_Config *cfg, RT_String string);
 RT_API bool RT_ConfigReadString(RT_Config *cfg, RT_String key, RT_String *value);

@@ -8,6 +8,7 @@
 #include "Core/Arena.h"
 #include "Core/MemoryScope.hpp"
 #include "Core/String.h"
+#include "Core/Vault.h"
 
 static inline void ConfigError(RT_Config *cfg, char *error)
 {
@@ -22,6 +23,31 @@ void RT_InitializeConfig(RT_Config *cfg, RT_Arena *arena)
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->arena = arena;
 	cfg->last_modified_time = RT_GetHighResTime().value;
+}
+
+bool RT_DeserializeConfigFromVault(RT_Config* cfg, const char* file_name)
+{
+	char* file_buffer = nullptr;
+	uint32_t buffer_size = 0;
+
+	RT_String file_name_string = RT_StringFromCString(file_name);
+
+	if (RT_GetFileFromVaults(file_name_string, file_buffer, buffer_size))
+	{
+		// got the config file from the vault
+
+		// parse it
+		RT_String file;
+		file.bytes = (char*)RT_ArenaAllocNoZero(cfg->arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
+		memcpy(&file_buffer, &file.bytes, buffer_size);
+		file.count = buffer_size;
+
+		RT_DeserializeConfigFromString(cfg, file);
+
+		return true;
+	}
+
+	return false;
 }
 
 bool RT_DeserializeConfigFromFile(RT_Config *cfg, const char *file_name)

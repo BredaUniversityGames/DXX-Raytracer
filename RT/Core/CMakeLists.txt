@@ -9,7 +9,8 @@ add_library(RT_CORE INTERFACE
 "Config.h" 
 "String.h" 
 "Hash.h"   
-"FileIO.h")
+"FileIO.h" 
+"Vault.h")
 
 target_sources(RT_CORE INTERFACE
 "${CMAKE_CURRENT_LIST_DIR}/Config.cpp"
@@ -18,4 +19,5 @@ target_sources(RT_CORE INTERFACE
 "${CMAKE_CURRENT_LIST_DIR}/Common.c"
 "${CMAKE_CURRENT_LIST_DIR}/String.c"
 "${CMAKE_CURRENT_LIST_DIR}/VirtualMemory.c"
+"${CMAKE_CURRENT_LIST_DIR}/Vault.cpp"
 )
