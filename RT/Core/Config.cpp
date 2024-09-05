@@ -39,8 +39,15 @@ bool RT_DeserializeConfigFromVault(RT_Config* cfg, const char* file_name)
 		// parse it
 		RT_String file;
 		file.bytes = (char*)RT_ArenaAllocNoZero(cfg->arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
-		memcpy(&file_buffer, &file.bytes, buffer_size);
+		//memcpy( &file.bytes, &file_buffer, buffer_size);
+		for (uint32_t char_index = 0; char_index < buffer_size; char_index++)
+		{
+			file.bytes[char_index] = file_buffer[char_index];
+		}
 		file.count = buffer_size;
+
+		// Null terminate for good measure
+		file.bytes[file.count] = 0;
 
 		RT_DeserializeConfigFromString(cfg, file);
 

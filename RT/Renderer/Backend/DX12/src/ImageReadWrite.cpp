@@ -3,6 +3,7 @@
 #include "Core/Arena.h"
 #include "Core/String.h"
 #include "Core/FileIO.h"
+#include "Core/Vault.h"
 
 // TODO(daniel): These external libraries are in a weird place... RT/Renderer/Backend/DX12? This has nothing to do with DX12!!!!!!!!
 
@@ -49,8 +50,32 @@ RT_Image RT_LoadImageFromDisk(RT_Arena *arena, const char *path_c, int required_
 	}
 	else
 	{
-		int w, h, channel_count;
-		result.pixels = stbi_load(path_c, &w, &h, &channel_count, required_channel_count);
+		
+		int w=0, h=0, channel_count=0;
+
+		char* file_buffer = nullptr;
+		uint32_t buffer_size = 0;
+		RT_String memory;
+
+		// first try to load from vault
+		if (RT_GetFileFromVaults(path, file_buffer, buffer_size))
+		{
+			memory.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
+			//memcpy( &file.bytes, &file_buffer, buffer_size);
+			for (uint32_t char_index = 0; char_index < buffer_size; char_index++)
+			{
+				memory.bytes[char_index] = file_buffer[char_index];
+			}
+			memory.count = buffer_size;
+
+			result.pixels = stbi_load_from_memory((unsigned char*)(memory.bytes),memory.count,&w,&h, &channel_count, required_channel_count);
+		}
+
+		// try to load from disk
+		if (!result.pixels)
+		{
+			result.pixels = stbi_load(path_c, &w, &h, &channel_count, required_channel_count);
+		}
 
 		if (result.pixels)
 		{
@@ -308,8 +333,35 @@ RT_Image RT_LoadDDSFromDisk(RT_Arena *arena, RT_String path)
 	// Don't want to spam when attempting to load DDS image first
 	// fprintf(stderr, "[RT_LoadDDSFromDisk]: Attempting to load image: '%.*s'\n", RT_ExpandString(path));
 
+	
+	//attempt to load from vaults first here;
+	bool loaded = false;
+
+	char* file_buffer = nullptr;
+	uint32_t buffer_size = 0;
 	RT_String memory;
-	if (RT_ReadEntireFile(arena, path, &memory))
+
+	if (RT_GetFileFromVaults(path, file_buffer, buffer_size))
+	{
+		memory.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
+		//memcpy( &file.bytes, &file_buffer, buffer_size);
+		for (uint32_t char_index = 0; char_index < buffer_size; char_index++)
+		{
+			memory.bytes[char_index] = file_buffer[char_index];
+		}
+		memory.count = buffer_size;
+
+		loaded = true;
+	}
+
+	
+	else if (RT_ReadEntireFile(arena, path, &memory))
+	{
+		
+		loaded = true;
+	}
+
+	if (loaded)
 	{
 		result = RT_LoadDDSFromMemory(memory);
 	}

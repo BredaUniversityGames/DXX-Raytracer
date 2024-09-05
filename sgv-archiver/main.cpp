@@ -14,6 +14,8 @@
 int main(int argc, char* argv[])
 {
 	printf("SGV Archiver\n");
+
+	long long headerSize = 19;		// manually set the header size of sgv as sizeof(header) will return 20 due to padding;
 	
 	char* arg_input = nullptr;
 	char* arg_output = nullptr;
@@ -115,14 +117,14 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	printf("Total files to add to archives: %d\n", files.size());
+	printf("Total files to add to archives: %zd\n", files.size());
 
 	// iterate over the list of files to add them to archives splitting them every 4GB.
 	constexpr uint32_t max_file_size = std::numeric_limits<uint32_t>::max();
 
 	while (!files.empty())
 	{
-		printf("Remaining files to be archived: %d\n", files.size());
+		printf("Remaining files to be archived: %zd\n", files.size());
 		
 		std::vector<std::filesystem::path> files_for_current_archive;
 		uint32_t current_data_size = 0;
@@ -249,7 +251,7 @@ int main(int argc, char* argv[])
 		// create the header
 		sgv_header header;
 		header.magic[0] = 'S';
-		header.magic[1] = 'F';
+		header.magic[1] = 'G';
 		header.magic[2] = 'V';
 		header.magic[3] = '!';
 		header.version_major = 1;
@@ -259,10 +261,15 @@ int main(int argc, char* argv[])
 		header.index_hash_function = 1;										// set hash_function to 1 (multiplication hash 1), NOTE may allow other values in future.
 		header.index_hash_function_modifier = modifier_selected;
 
-		sgv_fs.write((char*)&header, sizeof(header));
+		//sgv_fs.write((char*)&header, sizeof(header));
+		sgv_fs.write((char*)&header.magic, sizeof(char) * 4);
+		sgv_fs.write((char*)&header.version_major, sizeof(char));
+		sgv_fs.write((char*)&header.version_minor, sizeof(char));
+		sgv_fs.write((char*)&header.index_entries, sizeof(uint32_t));
+		sgv_fs.write((char*)&header.index_size, sizeof(uint32_t));
+		sgv_fs.write((char*)&header.index_hash_function, sizeof(char));
+		sgv_fs.write((char*)&header.index_hash_function_modifier, sizeof(uint32_t));
 
-		
-			
 		// build the archive index.
 		auto index_size = files_for_current_archive.size() * index_size_multiplier;
 		sgv_index_entry* index_entries = new sgv_index_entry[index_size]();
@@ -314,7 +321,7 @@ int main(int argc, char* argv[])
 			}
 
 			// Buffer to hold data while reading and writing
-			const size_t bufferSize = 8192; // Adjust the buffer size if needed
+			const size_t bufferSize = 8192;
 			char buffer[bufferSize];
 
 			// Read from the source file and write to the destination file
@@ -331,7 +338,7 @@ int main(int argc, char* argv[])
 		}
 
 		// seek back to the index location and write the final hashed index.
-		sgv_fs.seekp(sizeof(header));
+		sgv_fs.seekp(headerSize);
 		sgv_fs.write((char*)index_entries, sizeof(sgv_index_entry)* index_size);
 
 		

@@ -29,17 +29,18 @@ struct sgv_header {
 typedef struct RT_Vault
 {
 	sgv_header header;
-	sgv_index_entry* entries;
+	//sgv_index_entry* entries;		// NOTE: here in case caching of the entire index is needed
 } RT_Vault;
 
 typedef struct RT_VaultNode
 {
-	RT_String		vault_name;
+	char*			vault_name;
 	RT_Vault		vault_data;
 	RT_VaultNode*	next;
 } RT_VaultNode;
 
 RT_API RT_StringNode* RT_GetListOfVaults();
-RT_API bool RT_GetFileFromVaults(const RT_String file_name, char* buffer, uint32_t& buffer_length);
-RT_API bool RT_GetFileFromVault(const RT_String vault_name, const RT_String file_name, char* buffer, uint32_t& buffer_length);
-RT_API bool RT_LoadVaultIndex(const char* vault_name, RT_Vault& vault);
+RT_API bool RT_GetFileFromVaults(const RT_String file_name, char*& buffer, uint32_t& buffer_length);
+RT_API bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, char*& buffer, uint32_t& buffer_length);
+RT_API bool RT_LoadVaultIndex(const RT_String& vault_name, RT_Vault& vault);
+RT_API uint32_t RT_VaultHash(const char* string_to_hash, const char hash_function, const uint32_t modifier, const uint32_t hash_map_size);
