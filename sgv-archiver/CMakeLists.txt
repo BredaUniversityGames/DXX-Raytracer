@@ -13,8 +13,12 @@ add_executable(sgv-archiver)
 
 target_sources(sgv-archiver PRIVATE
 	
-	"main.cpp"
+	
 	"sgv-header.h"
 	"sgv-index-entry.h"
+	"sgv-utils.h"
+	"main.cpp"
+	"sgv-utils.cpp"
+
 	
-)
+ )
