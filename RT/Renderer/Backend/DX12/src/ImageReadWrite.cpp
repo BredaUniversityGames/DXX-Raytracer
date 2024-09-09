@@ -53,22 +53,14 @@ RT_Image RT_LoadImageFromDisk(RT_Arena *arena, const char *path_c, int required_
 		
 		int w=0, h=0, channel_count=0;
 
-		char* file_buffer = nullptr;
-		uint32_t buffer_size = 0;
-		RT_String memory;
+		RT_String file_buffer;
+		file_buffer.bytes = nullptr;
+		file_buffer.count = 0;
 
 		// first try to load from vault
-		if (RT_GetFileFromVaults(path, file_buffer, buffer_size))
+		if (RT_GetFileFromVaults(path, file_buffer))
 		{
-			memory.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
-			//memcpy( &file.bytes, &file_buffer, buffer_size);
-			for (uint32_t char_index = 0; char_index < buffer_size; char_index++)
-			{
-				memory.bytes[char_index] = file_buffer[char_index];
-			}
-			memory.count = buffer_size;
-
-			result.pixels = stbi_load_from_memory((unsigned char*)(memory.bytes),memory.count,&w,&h, &channel_count, required_channel_count);
+			result.pixels = stbi_load_from_memory((unsigned char*)(file_buffer.bytes),file_buffer.count,&w,&h, &channel_count, required_channel_count);
 		}
 
 		// try to load from disk
@@ -337,19 +329,12 @@ RT_Image RT_LoadDDSFromDisk(RT_Arena *arena, RT_String path)
 	//attempt to load from vaults first here;
 	bool loaded = false;
 
-	char* file_buffer = nullptr;
-	uint32_t buffer_size = 0;
 	RT_String memory;
+	memory.bytes = nullptr;
+	memory.count = 0;
 
-	if (RT_GetFileFromVaults(path, file_buffer, buffer_size))
+	if (RT_GetFileFromVaults(path, memory))
 	{
-		memory.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
-		//memcpy( &file.bytes, &file_buffer, buffer_size);
-		for (uint32_t char_index = 0; char_index < buffer_size; char_index++)
-		{
-			memory.bytes[char_index] = file_buffer[char_index];
-		}
-		memory.count = buffer_size;
 
 		loaded = true;
 	}
@@ -365,6 +350,8 @@ RT_Image RT_LoadDDSFromDisk(RT_Arena *arena, RT_String path)
 	{
 		result = RT_LoadDDSFromMemory(memory);
 	}
+
+	RT_ArenaReset(&g_thread_arena);
 
 	return result;
 }

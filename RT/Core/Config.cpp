@@ -27,29 +27,18 @@ void RT_InitializeConfig(RT_Config *cfg, RT_Arena *arena)
 
 bool RT_DeserializeConfigFromVault(RT_Config* cfg, const char* file_name)
 {
-	char* file_buffer = nullptr;
-	uint32_t buffer_size = 0;
 
 	RT_String file_name_string = RT_StringFromCString(file_name);
+	RT_String file_buffer;
+	file_buffer.bytes = nullptr;
+	file_buffer.count = 0;
 
-	if (RT_GetFileFromVaults(file_name_string, file_buffer, buffer_size))
+	if (RT_GetFileFromVaults(file_name_string, file_buffer))
 	{
 		// got the config file from the vault
 
 		// parse it
-		RT_String file;
-		file.bytes = (char*)RT_ArenaAllocNoZero(cfg->arena, (size_t)buffer_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
-		//memcpy( &file.bytes, &file_buffer, buffer_size);
-		for (uint32_t char_index = 0; char_index < buffer_size; char_index++)
-		{
-			file.bytes[char_index] = file_buffer[char_index];
-		}
-		file.count = buffer_size;
-
-		// Null terminate for good measure
-		file.bytes[file.count] = 0;
-
-		RT_DeserializeConfigFromString(cfg, file);
+		RT_DeserializeConfigFromString(cfg, file_buffer);
 
 		return true;
 	}

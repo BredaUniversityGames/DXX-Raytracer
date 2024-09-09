@@ -89,7 +89,7 @@ RT_StringNode* RT_GetListOfVaults()
 }
 
 
-bool RT_GetFileFromVaults(const RT_String file_name, char*& buffer, uint32_t& buffer_length)
+bool RT_GetFileFromVaults(const RT_String file_name, RT_String& buffer)
 {
 	// Check to see if the vault data has not been cached
 	if (!vault_data_cached)
@@ -149,30 +149,28 @@ bool RT_GetFileFromVaults(const RT_String file_name, char*& buffer, uint32_t& bu
 	{
 		RT_VaultNode* cur_vault = vault_data;
 
-		while (cur_vault != nullptr && buffer == nullptr)
+		while (cur_vault != nullptr && buffer.bytes == nullptr)
 		{
-			RT_GetFileFromVault(cur_vault, file_name, buffer, buffer_length);
+			RT_GetFileFromVault(cur_vault, file_name, buffer);
 			cur_vault = cur_vault->next;
 		}
 
-		if (buffer != nullptr && buffer_length != 0)
+		if (buffer.bytes != nullptr && buffer.count != 0)
 			return true;
 	}
 
 	return false;
 }
 
-bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, char*& buffer, uint32_t& buffer_length)
+bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, RT_String& buffer)
 {
 	
 
 	if (vault != nullptr)
 	{
 		// open the vault
-		char* vault_file = (char*)malloc(strlen(vault->vault_name) + 1); //  RT_CopyStringNullTerm(&g_thread_arena, vault->vault_name); //RT_ArenaPrintF(&g_thread_arena, "%s", line.bytes);
-		strcpy(vault_file, vault->vault_name);
-
-		FILE* f2 = fopen(vault_file, "rb");
+		
+		FILE* f2 = fopen(vault->vault_name, "rb");
 
 		if (f2)
 		{
@@ -201,6 +199,7 @@ bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, c
 
 				else if (strcmp(file_name_cstr, index_entry) == 0)
 				{
+					
 					found = true;  // we've found the file in the index
 
 					// extract the file here
@@ -211,12 +210,15 @@ bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, c
 					memcpy(&file_pos, &index_entry[256], 4);
 					memcpy(&file_len, &index_entry[260], 4);
 
-					buffer = (char*)malloc(file_len);
+					buffer.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)file_len + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
 					_fseeki64(f2, file_pos, SEEK_SET);
 					
-					fread(buffer, sizeof(char), file_len, f2);
+					fread(buffer.bytes, sizeof(char), file_len, f2);
 					
-					buffer_length = file_len;
+					buffer.count = file_len;
+
+					// Null terminate for good measure
+					buffer.bytes[buffer.count] = 0; 
 
 				}
 				else

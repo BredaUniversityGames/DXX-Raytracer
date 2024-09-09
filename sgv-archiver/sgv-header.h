@@ -8,8 +8,7 @@ struct sgv_header{
 	char			version_major;
 	char			version_minor;
 	char			index_hash_function;				// 0 = No Hash
-														// 1 = Multiplication 1 : hash = ( hash + modifier * value )  % index_size;
-														// 2 = Multiplication 2 : hash = ( hash + ( modifier * value ) + value ) % index_size;
+														// 1 = Multiplication 1 : hash = ( hash + modifier * value ) % index_size;
 	uint32_t		index_hash_function_modifier;
 	uint32_t		index_size;
 	uint32_t		index_entries;
