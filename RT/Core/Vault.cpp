@@ -1,11 +1,62 @@
 
-#include <cerrno>
-
 #include <Core/Vault.h>
 #include <Core/String.h>
 
 bool vault_data_cached = false;
 RT_VaultNode* vault_data = nullptr;
+
+RT_API void RT_CacheVaultsInfo()
+{
+	// cache the vault data/indexes
+	vault_data_cached = true;		// just need to keep track if we attempted to cache the vault data (so it doesn't repeatedly try to cache the vaults in the event it fails or there are none)
+
+	// Get list of vaults
+	RT_StringNode* vault_list = RT_GetListOfVaults();
+
+	// loop through the list and build the vault data
+	RT_StringNode* cur_node = vault_list;
+	RT_VaultNode* cur_vault_node = nullptr;	// vault_data;
+
+	// build the first vault list node
+	if (cur_node != nullptr)
+	{
+		RT_Vault vault;
+		if (RT_LoadVaultInfo(cur_node->string, vault))
+		{
+			// successfully loaded vault data, put it into list.
+			vault_data = new RT_VaultNode();
+			const char* temp_vault_name = RT_CopyStringNullTerm(&g_thread_arena, cur_node->string);
+			vault_data->vault_name = (char*)malloc(strlen(temp_vault_name) + 1);
+			strcpy(vault_data->vault_name, temp_vault_name);
+			vault_data->vault_data = vault;
+			vault_data->next = nullptr;
+			cur_vault_node = vault_data;
+		}
+
+		cur_node = cur_node->next;
+	}
+
+	// build remaining vault list nodes
+	while (cur_node != nullptr)
+	{
+		RT_Vault vault;
+		if (RT_LoadVaultInfo(cur_node->string, vault))
+		{
+			// successfully loaded vault data, put it into list.
+			cur_vault_node->next = new RT_VaultNode();
+			const char* temp_vault_name = RT_CopyStringNullTerm(&g_thread_arena, cur_node->string);
+			cur_vault_node->next->vault_name = (char*)malloc(strlen(temp_vault_name) + 1);
+			strcpy(cur_vault_node->next->vault_name, temp_vault_name);
+			cur_vault_node->next->vault_data = vault;
+			cur_vault_node->next->next = nullptr;
+			cur_vault_node = cur_vault_node->next;
+		}
+
+		cur_node = cur_node->next;
+	}
+
+	return;
+}
 
 RT_StringNode* RT_GetListOfVaults()
 {
@@ -28,7 +79,7 @@ RT_StringNode* RT_GetListOfVaults()
 	fseek(f, 0, SEEK_SET);
 
 	RT_String file;
-	file.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, file_size + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
+	file.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, file_size + 1, 16); 
 	file.count = file_size;
 
 	// Null terminate for good measure
@@ -49,14 +100,13 @@ RT_StringNode* RT_GetListOfVaults()
 		line = RT_StringTrim(line);
 
 		// verify that the vault exists
-		const char* vault_file = RT_CopyStringNullTerm(&g_thread_arena,line); //RT_ArenaPrintF(&g_thread_arena, "%s", line.bytes);
+		const char* vault_file = RT_CopyStringNullTerm(&g_thread_arena,line);
 
 		FILE* f2 = fopen(vault_file, "rb");
 
 		if (f2)
 		{
 			// we found a vault file
-			printf("Found Vault: %s\n", line.bytes);
 
 			// add it to the end of the vault list
 
@@ -80,9 +130,6 @@ RT_StringNode* RT_GetListOfVaults()
 
 			fclose(f2);
 		}
-
-		
-		
 	}
 
 	return vault_list;
@@ -94,54 +141,7 @@ bool RT_GetFileFromVaults(const RT_String file_name, RT_String& buffer)
 	// Check to see if the vault data has not been cached
 	if (!vault_data_cached)
 	{
-		// cache the vault data/indexes
-		vault_data_cached = true;		// just need to keep track if we attempted to cache the vault data (so it doesn't repeatedly try to cache the vaults in the event it fails or there are none)
-
-		// Get list of vaults
-		RT_StringNode* vault_list = RT_GetListOfVaults();
-
-		// loop through the list and build the vault data
-		RT_StringNode* cur_node = vault_list;
-		RT_VaultNode* cur_vault_node = nullptr;	// vault_data;
-
-		// build the first vault list node
-		if (cur_node != nullptr)
-		{
-			RT_Vault vault;
-			if (RT_LoadVaultIndex(cur_node->string, vault))
-			{
-				// successfully loaded vault data, put it into list.
-				vault_data = new RT_VaultNode();
-				const char* temp_vault_name = RT_CopyStringNullTerm(&g_thread_arena, cur_node->string);
-				vault_data->vault_name = (char*)malloc(strlen(temp_vault_name) + 1);
-				strcpy(vault_data->vault_name, temp_vault_name);
-				vault_data->vault_data = vault;
-				vault_data->next = nullptr;
-				cur_vault_node = vault_data;
-			}
-
-			cur_node = cur_node->next;
-		}
-
-		// build remaining vault list nodes
-		while ( cur_node != nullptr )
-		{
-			//RT_GetFileFromVault(vault_list->string, file_name, buffer, buffer_length);
-			RT_Vault vault;
-			if (RT_LoadVaultIndex(cur_node->string, vault))
-			{
-				// successfully loaded vault data, put it into list.
-				cur_vault_node->next = new RT_VaultNode();
-				const char* temp_vault_name = RT_CopyStringNullTerm(&g_thread_arena, cur_node->string);
-				cur_vault_node->next->vault_name = (char*)malloc(strlen(temp_vault_name) + 1);
-				strcpy(cur_vault_node->next->vault_name, temp_vault_name);
-				cur_vault_node->next->vault_data = vault;
-				cur_vault_node->next->next = nullptr;
-				cur_vault_node = cur_vault_node->next;
-			}
-
-			cur_node = cur_node->next;
-		}
+		RT_CacheVaultsInfo();
 	}
 	
 	// Loop over list of vaults and search each one for the file
@@ -165,7 +165,6 @@ bool RT_GetFileFromVaults(const RT_String file_name, RT_String& buffer)
 bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, RT_String& buffer)
 {
 	
-
 	if (vault != nullptr)
 	{
 		// open the vault
@@ -210,7 +209,7 @@ bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, R
 					memcpy(&file_pos, &index_entry[256], 4);
 					memcpy(&file_len, &index_entry[260], 4);
 
-					buffer.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)file_len + 1, 16); // NOTE(daniel): This could just use the thread arena but there's nuances here if the arena passed in is the thread arena...
+					buffer.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)file_len + 1, 16); 
 					_fseeki64(f2, file_pos, SEEK_SET);
 					
 					fread(buffer.bytes, sizeof(char), file_len, f2);
@@ -239,7 +238,7 @@ bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, R
 
 }
 
-bool RT_LoadVaultIndex(const RT_String& vault_name, RT_Vault& vault)
+bool RT_LoadVaultInfo(const RT_String& vault_name, RT_Vault& vault)
 {
 	const char* vault_with_path = RT_CopyStringNullTerm(&g_thread_arena, vault_name);
 
@@ -278,11 +277,6 @@ bool RT_LoadVaultIndex(const RT_String& vault_name, RT_Vault& vault)
 	fread(&vault.header.index_size, sizeof(uint32_t), 1, f);
 	fread(&vault.header.index_hash_function, sizeof(char), 1, f);
 	fread(&vault.header.index_hash_function_modifier, sizeof(uint32_t), 1, f);
-	
-	
-	// load the index 
-	//vault.entries = (sgv_index_entry*)malloc(sizeof(sgv_index_entry) * vault.header.index_size);
-	//fread(&vault.entries, sizeof(sgv_index_entry), vault.header.index_size, f);
 
 	return true;
 }

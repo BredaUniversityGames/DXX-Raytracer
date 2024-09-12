@@ -15,7 +15,6 @@
 
 int main(int argc, char* argv[])
 {
-	//printf("SGV Archiver\n");
 
 	long long headerSize = 19;		// manually set the header size of sgv as sizeof(header) will return 20 due to padding;
 	
@@ -122,12 +121,12 @@ int main(int argc, char* argv[])
 		{
 			if (std::filesystem::is_regular_file( dir_entry ) )
 			{
-				printf("File: %s \n", std::filesystem::relative( dir_entry.path(), std::filesystem::path(arg_input)).generic_string().c_str());
+				//printf("File: %s \n", std::filesystem::relative( dir_entry.path(), std::filesystem::path(arg_input)).generic_string().c_str());
 				files.push_back( dir_entry );
 			}
 			else if (std::filesystem::is_directory( dir_entry ))
 			{
-				printf("Directory: %s \n", std::filesystem::relative( dir_entry.path(), std::filesystem::path(arg_input)).generic_string().c_str());
+				//printf("Directory: %s \n", std::filesystem::relative( dir_entry.path(), std::filesystem::path(arg_input)).generic_string().c_str());
 				directories.push( dir_entry );
 			}
 		}
@@ -167,7 +166,7 @@ int main(int argc, char* argv[])
 			{
 				// there is room to fit the new file into the archive
 				current_data_size += current_file_size;
-				files_for_current_archive.push_back(current_file);	// TODO does current_file need to be deep copied here or is the reference good enough?
+				files_for_current_archive.push_back(current_file);
 				files.pop_back();
 			}
 			else
@@ -181,18 +180,15 @@ int main(int argc, char* argv[])
 
 		// we have the files for the archive... process them into an archive.
 
-		// determine the best hash modifier value to use for these index entries that minimize collisions
+		// determine the best hash modifier value to use for these index entries that maximize the spread of entries across the array to reduce collisions 
 		uint32_t modifier_min = 1;
 		uint32_t modifier_max = 1024;
 
 		uint32_t modifier_selected = 0;
 		double modifier_selected_spread_score = 1000000000.0;// std::numeric_limits<double>::max();
 
-		// loop through every hash modifier value and test build the index to test for collisions.  The one with the fewest collisions is selected.  
-		// If a modifier value is found to have no collisions it is chosen immediately and the search is ended.
-		
-		//for (uint32_t modifier_current = modifier_min; modifier_current < modifier_max && modifier_selected_collisions != 0; modifier_current++)
-		for (uint32_t modifier_current_index = 0; modifier_current_index < passes && modifier_selected_spread_score != 0.0; modifier_current_index++)
+		// loop through the series hash modifier values and test build the index to test for how evenly spread the entries are.  The one with the most even spread is selected.  
+		for (uint32_t modifier_current_index = 0; modifier_current_index < passes; modifier_current_index++)
 		{
 			printf("Optimizing Hash: Pass# %zd/%zd \r", modifier_current_index + 1, passes);
 			fflush(stdout);
@@ -234,6 +230,7 @@ int main(int argc, char* argv[])
 			// files are all placed in the index
 
 			// see if this index is better than the current best index
+			// calculateSpread returns a lower score for more event spread, so we want the lowest score to be chosen.
 			double modifier_current_spread_score = calculateSpread(index_entries,index_size);
 
 			if (modifier_current_spread_score < modifier_selected_spread_score)

@@ -45,7 +45,8 @@ uint32_t hashString(const std::string& string, char hash_function, uint32_t size
 }
 
 // Function to calculate the spread score
-
+// It takes the distance between entries and finds the standard deviation of the distances between entries. 
+// The more spread out the entries across the array the lower the deviation/score.  0 = perfectly spread entries.
 double calculateSpread(const sgv_index_entry* index_entries, size_t index_size) {
 
     std::vector<int> filled_indices;
@@ -61,7 +62,7 @@ double calculateSpread(const sgv_index_entry* index_entries, size_t index_size) 
         //else
             //printf(" ");
     }
-    printf("\n");
+    //printf("\n");
 
     if (filled_indices.size() < 2)
     {
