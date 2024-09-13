@@ -58,6 +58,91 @@ RT_API void RT_CacheVaultsInfo()
 	return;
 }
 
+RT_API bool RT_FileExistsInVaults(const RT_String* file_name)
+{
+	bool found = false;
+
+	// Check to see if the vault data has not been cached
+	if (!vault_data_cached)
+	{
+		RT_CacheVaultsInfo();
+	}
+
+	// Loop over list of vaults and search each one for the file
+	if (vault_data_cached && vault_data != nullptr)
+	{
+		RT_VaultNode* cur_vault = vault_data;
+
+		while (cur_vault != nullptr && !found)
+		{
+			found = RT_FileExistsInVault(cur_vault, file_name);
+			cur_vault = cur_vault->next;
+		}
+
+		
+	}
+
+	return found;
+}
+
+RT_API bool RT_FileExistsInVault(const RT_VaultNode* vault, const RT_String* file_name)
+{
+	bool found = false;
+	bool empty = false;
+	
+	if (vault != nullptr)
+	{
+		// open the vault
+
+		FILE* f2 = fopen(vault->vault_name, "rb");
+
+		if (f2)
+		{
+			// query index to find if file present
+			const char* file_name_cstr = RT_CopyStringNullTerm(&g_thread_arena, *file_name);
+
+			uint32_t file_name_hash = RT_VaultHash(
+				file_name_cstr,
+				vault->vault_data.header.index_hash_function,
+				vault->vault_data.header.index_hash_function_modifier,
+				vault->vault_data.header.index_size);
+
+			
+
+			while (!empty && !found)
+			{
+				uint32_t headerSize = 19;		// manually set the header size as sizeof(sgv_header) will return 20 due to padding;
+				fseek(f2, headerSize + (file_name_hash * sizeof(sgv_index_entry)), SEEK_SET);
+				char index_entry[264];
+				fread(&index_entry, sizeof(char), 264, f2);
+
+				// check to see if the index entry is an empty string.  if so the file is not in the vault.
+				if (index_entry[0] == 0)
+					empty = true;
+
+				else if (strcmp(file_name_cstr, index_entry) == 0)
+				{
+
+					found = true;  // we've found the file in the index
+
+				}
+				else
+				{
+					// we've hit an entry in the index, but it wasn't what we were looking for.  move the index to the next entry and try again
+					file_name_hash = (file_name_hash + 1) % vault->vault_data.header.index_size;
+				}
+			}
+
+			// close vault
+			fclose(f2);
+		}
+
+	}
+
+
+	return found;
+}
+
 RT_StringNode* RT_GetListOfVaults()
 {
 	char* vaults_file = RT_ArenaPrintF(&g_thread_arena, "vaults");
@@ -143,7 +228,7 @@ bool RT_GetFileFromVaults(const RT_String file_name, RT_String& buffer)
 	{
 		RT_CacheVaultsInfo();
 	}
-	
+
 	// Loop over list of vaults and search each one for the file
 	if(vault_data_cached && vault_data != nullptr)
 	{
@@ -164,11 +249,11 @@ bool RT_GetFileFromVaults(const RT_String file_name, RT_String& buffer)
 
 bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, RT_String& buffer)
 {
-	
+
 	if (vault != nullptr)
 	{
 		// open the vault
-		
+
 		FILE* f2 = fopen(vault->vault_name, "rb");
 
 		if (f2)
@@ -198,32 +283,32 @@ bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, R
 
 				else if (strcmp(file_name_cstr, index_entry) == 0)
 				{
-					
+
 					found = true;  // we've found the file in the index
 
 					// extract the file here
-					
+
 					uint32_t file_pos = 0;
 					uint32_t file_len = 0;
-					
+
 					memcpy(&file_pos, &index_entry[256], 4);
 					memcpy(&file_len, &index_entry[260], 4);
 
-					buffer.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)file_len + 1, 16); 
+					buffer.bytes = (char*)RT_ArenaAllocNoZero(&g_thread_arena, (size_t)file_len + 1, 16);
 					_fseeki64(f2, file_pos, SEEK_SET);
-					
+
 					fread(buffer.bytes, sizeof(char), file_len, f2);
-					
+
 					buffer.count = file_len;
 
 					// Null terminate for good measure
-					buffer.bytes[buffer.count] = 0; 
+					buffer.bytes[buffer.count] = 0;
 
 				}
 				else
 				{
 					// we've hit an entry in the index, but it wasn't what we were looking for.  move the index to the next entry and try again
-					file_name_hash = (file_name_hash+1) % vault->vault_data.header.index_size;
+					file_name_hash = (file_name_hash + 1) % vault->vault_data.header.index_size;
 				}
 			}
 

@@ -51,6 +51,7 @@ RT_API void RT_ConfigWriteVec3(RT_Config *cfg, RT_String key, RT_Vec3 value);
 RT_API bool RT_ConfigEraseKey(RT_Config *cfg, RT_String key); // Returns true if the key existed
 RT_API RT_String RT_SerializeConfigToString(RT_Arena *arena, RT_Config *cfg);
 RT_API bool RT_SerializeConfigToFile(RT_Config *cfg, char *file_name);
+RT_API bool RT_ConfigFileExistsInVaults(const RT_String *file_name);
 
 // Prefer the above functions for easy interpretation of values
 RT_API RT_ConfigKeyValue *RT_ConfigFindKeyValue(RT_Config *cfg, RT_String key);

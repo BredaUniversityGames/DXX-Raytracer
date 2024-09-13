@@ -454,3 +454,8 @@ bool RT_SerializeConfigToFile(RT_Config *cfg, char *file_name)
 
 	return result;
 }
+
+bool RT_ConfigFileExistsInVaults(const RT_String* file_name)
+{
+	return RT_FileExistsInVaults(file_name);
+}

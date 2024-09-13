@@ -42,6 +42,8 @@ typedef struct RT_VaultNode
 
 RT_API void RT_CacheVaultsInfo();
 RT_API RT_StringNode* RT_GetListOfVaults();
+RT_API bool RT_FileExistsInVaults(const RT_String *file_name);
+RT_API bool RT_FileExistsInVault(const RT_VaultNode* vault, const RT_String* file_name);
 RT_API bool RT_GetFileFromVaults(const RT_String file_name, RT_String& buffer);
 RT_API bool RT_GetFileFromVault(const RT_VaultNode* vault, const RT_String file_name, RT_String& buffer);
 RT_API bool RT_LoadVaultInfo(const RT_String& vault_name, RT_Vault& vault);
