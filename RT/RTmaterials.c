@@ -47,6 +47,7 @@ char *g_rt_texture_slot_names[RT_MaterialTextureSlot_COUNT] =
 	[RT_MaterialTextureSlot_Metalness] = "metalness",
 	[RT_MaterialTextureSlot_Roughness] = "roughness",
 	[RT_MaterialTextureSlot_Emissive]  = "emissive",
+	[RT_MaterialTextureSlot_Height] = "height",
 };
 
 RT_Material				g_rt_materials				[RT_MAX_TEXTURES];
@@ -122,6 +123,11 @@ static void RT_ParseMaterialDefinitionFile(int bm_index, RT_Material *material, 
 			if (RT_ConfigReadString(&cfg, RT_StringLiteral("emissive_texture"), &string))
 			{
 				RT_CopyStringToBufferNullTerm(string, sizeof(paths->emissive_texture), paths->emissive_texture);
+			}
+
+			if (RT_ConfigReadString(&cfg, RT_StringLiteral("height_texture"), &string))
+			{
+				RT_CopyStringToBufferNullTerm(string, sizeof(paths->height_texture), paths->height_texture);
 			}
 
 			bool has_roughness = RT_ConfigReadFloat(&cfg, RT_StringLiteral("roughness"), &material->roughness);
@@ -477,6 +483,7 @@ void RT_InitAllBitmaps(void)
 			snprintf(paths->metalness_texture, sizeof(paths->metalness_texture), "%s_metallic", bitmap_name);
 			snprintf(paths->roughness_texture, sizeof(paths->roughness_texture), "%s_roughness", bitmap_name);
 			snprintf(paths->emissive_texture, sizeof(paths->emissive_texture), "%s_emissive", bitmap_name);
+			snprintf(paths->height_texture, sizeof(paths->height_texture), "%s_height", bitmap_name);
 
 			// ------------------------------------------------------------------
 

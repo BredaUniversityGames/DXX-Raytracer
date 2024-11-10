@@ -46,6 +46,7 @@ struct Material
 	uint   metalness_index;
 	uint   roughness_index;
 	uint   emissive_index;
+	uint   height_index;
 	uint   flags;
 	float  metalness_factor;
 	float  roughness_factor;

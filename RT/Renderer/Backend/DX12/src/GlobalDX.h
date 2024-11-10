@@ -282,6 +282,9 @@ namespace RT
 		TextureResource  *black_texture;
 		RT_ResourceHandle black_texture_handle;
 
+		TextureResource* gray_texture;
+		RT_ResourceHandle gray_texture_handle;
+
 		TextureResource *default_normal_texture;
 		RT_ResourceHandle pink_checkerboard_texture;
 

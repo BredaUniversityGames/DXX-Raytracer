@@ -45,6 +45,7 @@ TWEAK_OPTIONS("Metallic/Roughness Sampler",metallic_roughness_sample_linear, 0, 
 TWEAK_BOOL   ("Override Materials",        override_materials,        false)
 TWEAK_FLOAT  ("Override Metallic",         override_metallic,         0,        0,    1)
 TWEAK_FLOAT  ("Override Roughness",        override_roughness,        0.3,      0,    1)
+TWEAK_BOOL   ("Enable Parallax Mapping",   enable_parallax_mapping,   true)
 // ------------------------------------------------------------------------------------------------------------------
 TWEAK_CATEGORY_END()
 

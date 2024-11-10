@@ -1458,6 +1458,9 @@ void raytrace_config()
 	int headlight_brightness = (int)roundf(g_headlights.brightness * 5.0f);
 	int opt_gr_headlight_brightness = nitems;
 	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Headlight Brightness:"; m[nitems].value = headlight_brightness; m[nitems].min_value = 0; m[nitems].max_value = 15; nitems++;
+	
+	int opt_gr_enable_parallax = nitems;
+	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Parallax Mapping"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_parallax_mapping")); nitems++;
 
 	RT_ASSERT(nitems <= RT_ARRAY_COUNT(m));
 
@@ -1546,6 +1549,8 @@ void raytrace_config()
 		RT_ConfigWriteFloat(config, RT_StringLiteral("gamma"), -1.0 + ((float)m[opt_gr_gamma].value/10.0f));
 		RT_ConfigWriteFloat(config, RT_StringLiteral("vignette_scale"), ((float)m[opt_gr_vignette_scale].value)/10.0f);
 		RT_ConfigWriteFloat(config, RT_StringLiteral("vignette_strength"), ((float)m[opt_gr_vignette_strength].value)/10.0f);
+
+		RT_ConfigWriteInt(config, RT_StringLiteral("enable_parallax_mapping"), m[opt_gr_enable_parallax].value);
 
 		RT_SerializeConfigToFile(config, RT_RENDER_SETTINGS_CONFIG_FILE); 
 		config->last_modified_time = RT_GetHighResTime().value;
