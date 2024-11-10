@@ -714,9 +714,24 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 		if (albedo2.a > 0.0)
 		{
 			material_index = material_index2;
-			if(orient != 0)
+			if (orient != 0)
 			{
 				uv = uv_rotated;
+
+				// Calculate UV direction vectors
+				float2 uvEdge1 = hit_triangle.uv1 - hit_triangle.uv0;
+				float2 uvEdge2 = hit_triangle.uv2 - hit_triangle.uv0;
+
+				// Compute the determinant
+				float det = uvEdge1.x * uvEdge2.y - uvEdge1.y * uvEdge2.x;
+
+				if (det < 0.0 && orient % 2 == 1)
+				{
+					// if the uv coords are mirrored and the orientation is 1 or 3 (90 and 270 degress) add 180 degress
+					// this is because 90 and 270 need to be swapped when uvs are mirrored and its easier to just add 180 degress.
+					orient += 2;
+				}
+
 				tangent = GetRotatedTangent(orient, normal, tangent);
 			}
 		}
