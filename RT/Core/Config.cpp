@@ -8,6 +8,7 @@
 #include "Core/Arena.h"
 #include "Core/MemoryScope.hpp"
 #include "Core/String.h"
+#include "Core/Vault.h"
 
 static inline void ConfigError(RT_Config *cfg, char *error)
 {
@@ -22,6 +23,27 @@ void RT_InitializeConfig(RT_Config *cfg, RT_Arena *arena)
 	memset(cfg, 0, sizeof(*cfg));
 	cfg->arena = arena;
 	cfg->last_modified_time = RT_GetHighResTime().value;
+}
+
+bool RT_DeserializeConfigFromVault(RT_Config* cfg, const char* file_name)
+{
+
+	RT_String file_name_string = RT_StringFromCString(file_name);
+	RT_String file_buffer;
+	file_buffer.bytes = nullptr;
+	file_buffer.count = 0;
+
+	if (RT_GetFileFromVaults(file_name_string, file_buffer))
+	{
+		// got the config file from the vault
+
+		// parse it
+		RT_DeserializeConfigFromString(cfg, file_buffer);
+
+		return true;
+	}
+
+	return false;
 }
 
 bool RT_DeserializeConfigFromFile(RT_Config *cfg, const char *file_name)
@@ -431,4 +453,9 @@ bool RT_SerializeConfigToFile(RT_Config *cfg, char *file_name)
 	}
 
 	return result;
+}
+
+bool RT_ConfigFileExistsInVaults(const RT_String* file_name)
+{
+	return RT_FileExistsInVaults(file_name);
 }

@@ -96,7 +96,7 @@ static inline RT_String RT_CopyString(RT_Arena *arena, RT_String string)
 static inline const char *RT_CopyStringNullTerm(RT_Arena *arena, RT_String string)
 {
 	char *result = (char *)RT_ArenaCopyArray(arena, string.bytes, string.count + 1);
-	result[string.count + 1] = 0;
+	result[string.count] = 0;
 	return result;
 }
 

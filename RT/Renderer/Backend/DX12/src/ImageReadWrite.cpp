@@ -3,6 +3,7 @@
 #include "Core/Arena.h"
 #include "Core/String.h"
 #include "Core/FileIO.h"
+#include "Core/Vault.h"
 
 // TODO(daniel): These external libraries are in a weird place... RT/Renderer/Backend/DX12? This has nothing to do with DX12!!!!!!!!
 
@@ -49,8 +50,24 @@ RT_Image RT_LoadImageFromDisk(RT_Arena *arena, const char *path_c, int required_
 	}
 	else
 	{
-		int w, h, channel_count;
-		result.pixels = stbi_load(path_c, &w, &h, &channel_count, required_channel_count);
+		
+		int w=0, h=0, channel_count=0;
+
+		RT_String file_buffer;
+		file_buffer.bytes = nullptr;
+		file_buffer.count = 0;
+
+		// first try to load from vault
+		if (RT_GetFileFromVaults(path, file_buffer))
+		{
+			result.pixels = stbi_load_from_memory((unsigned char*)(file_buffer.bytes),file_buffer.count,&w,&h, &channel_count, required_channel_count);
+		}
+
+		// try to load from disk
+		if (!result.pixels)
+		{
+			result.pixels = stbi_load(path_c, &w, &h, &channel_count, required_channel_count);
+		}
 
 		if (result.pixels)
 		{
@@ -308,11 +325,33 @@ RT_Image RT_LoadDDSFromDisk(RT_Arena *arena, RT_String path)
 	// Don't want to spam when attempting to load DDS image first
 	// fprintf(stderr, "[RT_LoadDDSFromDisk]: Attempting to load image: '%.*s'\n", RT_ExpandString(path));
 
+	
+	//attempt to load from vaults first here;
+	bool loaded = false;
+
 	RT_String memory;
-	if (RT_ReadEntireFile(arena, path, &memory))
+	memory.bytes = nullptr;
+	memory.count = 0;
+
+	if (RT_GetFileFromVaults(path, memory))
+	{
+
+		loaded = true;
+	}
+
+	
+	else if (RT_ReadEntireFile(arena, path, &memory))
+	{
+		
+		loaded = true;
+	}
+
+	if (loaded)
 	{
 		result = RT_LoadDDSFromMemory(memory);
 	}
+
+	RT_ArenaReset(&g_thread_arena);
 
 	return result;
 }

@@ -96,7 +96,16 @@ static void RT_ParseMaterialDefinitionFile(int bm_index, RT_Material *material, 
 		RT_Config cfg;
 		RT_InitializeConfig(&cfg, &g_thread_arena);
 
-		if (RT_DeserializeConfigFromFile(&cfg, material_file))
+		// first try to load the material definition from the vault files
+		bool loaded = RT_DeserializeConfigFromVault(&cfg, material_file);
+
+		// if fails, try from file.
+		if (!loaded)
+		{
+			loaded = RT_DeserializeConfigFromFile(&cfg, material_file);
+		}
+		
+		if (loaded)
 		{
 			RT_String string;
 
@@ -167,14 +176,21 @@ static void RT_VerifyMaterialTexturesFromPaths(uint16_t bm_index, RT_MaterialPat
 			RT_ArenaMemoryScope(&g_thread_arena)
 			{
 				char* dds_file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.dds", paths->textures[i]);
+				
+				RT_String file_name_string = RT_StringFromCString(dds_file);
+				bool found = RT_ConfigFileExistsInVaults(&file_name_string);
 
 				FILE* f = fopen(dds_file, "r");
+
+				if (found || f)
+				{
+					paths->textures[i];
+					paths_exist->textures[i] = true;
+				}
 
 				if (f)
 				{
 					fclose(f);
-					paths->textures[i];
-					paths_exist->textures[i] = true;
 				}
 			}
 
@@ -184,13 +200,21 @@ static void RT_VerifyMaterialTexturesFromPaths(uint16_t bm_index, RT_MaterialPat
 				{
 					char* file = RT_ArenaPrintF(&g_thread_arena, "assets/textures/%s.png", paths->textures[i]);
 
+					RT_String file_name_string = RT_StringFromCString(file);
+					bool found = RT_ConfigFileExistsInVaults(&file_name_string);
+
 					FILE* f = fopen(file, "r");
+
+					if (found ||  f)
+					{
+						
+						paths->textures[i];
+						paths_exist->textures[i] = true;
+					}
 
 					if (f)
 					{
 						fclose(f);
-						paths->textures[i];
-						paths_exist->textures[i] = true;
 					}
 				}
 			}
