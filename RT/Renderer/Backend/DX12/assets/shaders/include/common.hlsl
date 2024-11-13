@@ -802,7 +802,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 			return true;
 		}
 
-		if ( dither >= albedo2.a )
+		if ( dither < albedo2.a )
 		{
 			material = g_materials[material_index2];
 			return dither >= base_alpha;
