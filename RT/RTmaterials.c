@@ -96,13 +96,13 @@ static void RT_ParseMaterialDefinitionFile(int bm_index, RT_Material *material, 
 		RT_Config cfg;
 		RT_InitializeConfig(&cfg, &g_thread_arena);
 
-		// first try to load the material definition from the vault files
-		bool loaded = RT_DeserializeConfigFromVault(&cfg, material_file);
+		// first try to load the material definition from file
+		bool loaded = RT_DeserializeConfigFromFile(&cfg, material_file);
 
-		// if fails, try from file.
+		// if fails, try from the vaults.
 		if (!loaded)
 		{
-			loaded = RT_DeserializeConfigFromFile(&cfg, material_file);
+			loaded = RT_DeserializeConfigFromVault(&cfg, material_file);
 		}
 		
 		if (loaded)
