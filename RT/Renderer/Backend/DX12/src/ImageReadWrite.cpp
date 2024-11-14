@@ -57,16 +57,13 @@ RT_Image RT_LoadImageFromDisk(RT_Arena *arena, const char *path_c, int required_
 		file_buffer.bytes = nullptr;
 		file_buffer.count = 0;
 
-		// first try to load from vault
-		if (RT_GetFileFromVaults(path, file_buffer))
+		// first try to load from disk
+		result.pixels = stbi_load(path_c, &w, &h, &channel_count, required_channel_count);
+
+		// try to load from the vaults
+		if (!result.pixels && RT_GetFileFromVaults(path, file_buffer))
 		{
 			result.pixels = stbi_load_from_memory((unsigned char*)(file_buffer.bytes),file_buffer.count,&w,&h, &channel_count, required_channel_count);
-		}
-
-		// try to load from disk
-		if (!result.pixels)
-		{
-			result.pixels = stbi_load(path_c, &w, &h, &channel_count, required_channel_count);
 		}
 
 		if (result.pixels)
@@ -333,14 +330,12 @@ RT_Image RT_LoadDDSFromDisk(RT_Arena *arena, RT_String path)
 	memory.bytes = nullptr;
 	memory.count = 0;
 
-	if (RT_GetFileFromVaults(path, memory))
+	if (RT_ReadEntireFile(arena, path, &memory))
 	{
 
 		loaded = true;
 	}
-
-	
-	else if (RT_ReadEntireFile(arena, path, &memory))
+	else if (RT_GetFileFromVaults(path, memory))
 	{
 		
 		loaded = true;
