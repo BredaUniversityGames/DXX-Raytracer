@@ -661,7 +661,7 @@ float2 GetRotatedUVs(uint orient, float2 uv)
 	}
 }
 
-void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, float2 barycentrics, inout uint material_index, inout float2 uv, inout float3 normal, inout float3 tangent)
+void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, uint instance_index, int2 pixel_pos, float2 barycentrics, inout uint material_index, inout float2 uv, inout float3 normal, inout float3 tangent)
 {
 	// Figure out the materials and apply potential debug material override
 	uint material_edge_index = hit_triangle.material_edge_index;
@@ -710,8 +710,9 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 		Material material2 = g_materials[material_index2];
 		Texture2D tex_albedo_material2 = GetTextureFromIndex(material2.albedo_index);
 		float4 albedo2 = tex_albedo_material2.SampleLevel(g_sampler_point_wrap, uv_rotated, 0);
+		float  dither = RandomSample(pixel_pos, instance_index) * 0.99;
 
-		if (albedo2.a > 0.0)
+		if (albedo2.a > dither)
 		{
 			material_index = material_index2;
 			if (orient != 0)

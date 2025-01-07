@@ -130,7 +130,7 @@ void GetHitGeometryFromRay(RayDesc ray,
         float2 uv = (float2)0;
 		float3 interpolated_normal = (float3)0;
 		float3 tangent = (float3)0;
-        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
+        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, instance_index, pixel_pos, barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
         Material hit_material = g_materials[OUT.material_index];
 
         // ==========================================================================
