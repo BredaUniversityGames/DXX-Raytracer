@@ -1462,6 +1462,10 @@ void raytrace_config()
 	int opt_gr_enable_parallax = nitems;
 	m[nitems].type = NM_TYPE_CHECK; m[nitems].text = "Parallax Mapping"; m[nitems].value = RT_GetIntFromConfig(config, RT_StringLiteral("enable_parallax_mapping")); nitems++;
 
+	int opt_gr_direct_specular_amount = nitems;
+	m[nitems].type = NM_TYPE_SLIDER; m[nitems].text = "Direct Specular Amount:"; m[nitems].value = (int)(RT_GetFloatFromConfig(config, RT_StringLiteral("direct_specular_amount")) * 10.f); m[nitems].min_value = 0; m[nitems].max_value = 10; nitems++;
+
+
 	RT_ASSERT(nitems <= RT_ARRAY_COUNT(m));
 
 	newmenu_do1( NULL, "Raytracing Options", nitems, m, raytrace_config_menuset, NULL, 1 );
@@ -1551,6 +1555,7 @@ void raytrace_config()
 		RT_ConfigWriteFloat(config, RT_StringLiteral("vignette_strength"), ((float)m[opt_gr_vignette_strength].value)/10.0f);
 
 		RT_ConfigWriteInt(config, RT_StringLiteral("enable_parallax_mapping"), m[opt_gr_enable_parallax].value);
+		RT_ConfigWriteFloat(config, RT_StringLiteral("direct_specular_amount"), ((float)m[opt_gr_direct_specular_amount].value) / 10.0f);
 
 		RT_SerializeConfigToFile(config, RT_RENDER_SETTINGS_CONFIG_FILE); 
 		config->last_modified_time = RT_GetHighResTime().value;
