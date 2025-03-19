@@ -316,6 +316,14 @@ RT_GLTFNode *RT_LoadGLTF(RT_Arena *arena, const char *path, RT_MaterialOverride*
 				prim_triangles[triangle_index].material_edge_index = material_index|RT_TRIANGLE_HOLDS_MATERIAL_INDEX;
 			}
 
+			// set the world geometry members
+			for (size_t triangle_index = 0; triangle_index < prim_triangle_count; triangle_index++)
+			{
+				prim_triangles[triangle_index].portal = false;
+				prim_triangles[triangle_index].segment = -1;
+				prim_triangles[triangle_index].segment_adjacent = -1;
+			}
+
 			size_t    index_count = primitive->indices->count;
 			uint32_t *indices     = nullptr;
 

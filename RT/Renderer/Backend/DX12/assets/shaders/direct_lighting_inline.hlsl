@@ -44,7 +44,7 @@ void DirectLightingInline(COMPUTE_ARGS)
 	// ----------------------------------------------------------------------------
 	// Write the diffuse, specular, and emissive lighting to their respective buffers
 
-	img_spec[pixel_pos] = float4(direct_lighting_output.direct_specular, 0);
+	img_spec[pixel_pos] = float4(direct_lighting_output.direct_specular, 0) * tweak.direct_specular_amount;
 	img_diff[pixel_pos] = float4(direct_lighting_output.direct_lighting, 0);
 	img_emissive[pixel_pos] = float4(direct_lighting_output.emissive_lighting, 0);
 }

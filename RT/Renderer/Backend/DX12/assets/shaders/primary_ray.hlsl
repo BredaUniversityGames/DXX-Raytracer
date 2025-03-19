@@ -41,7 +41,7 @@ void PrimaryRaygen()
     // Trace the primary ray
     RayDesc ray = GetRayDesc(dispatch_idx, dispatch_dim);
     PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
-    TracePrimaryRay(ray, ray_payload, dispatch_idx);
+    TracePrimaryRay(ray, ray_payload, dispatch_idx, ~2);
 
     // Set up geometry output from primary ray trace and set non-zero defaults where necessary
     HitGeometry geo = (HitGeometry)0;
@@ -49,36 +49,36 @@ void PrimaryRaygen()
 
     // Get geometry data from primary ray trace
     GetHitGeometryFromRay(ray,
-		ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
-		0, dispatch_idx, dispatch_dim, geo
-	);
+        ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
+        0, dispatch_idx, dispatch_dim, geo, tweak.enable_parallax_mapping
+    );
     float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, ray.Direction, ray_payload.hit_distance);
 
-	// -------------------------------------------------------------------------------------
-	// Determine gbuffer motion value
+    // -------------------------------------------------------------------------------------
+    // Determine gbuffer motion value
 
-	float3x4 world_to_object = float3x4(geo.instance_data.world_to_object[0],
-										geo.instance_data.world_to_object[1],
-										geo.instance_data.world_to_object[2]);
+    float3x4 world_to_object = float3x4(geo.instance_data.world_to_object[0],
+        geo.instance_data.world_to_object[1],
+        geo.instance_data.world_to_object[2]);
 
-	float3 object_p     = mul(world_to_object, float4(geo_world_p, 1)).xyz;
-	float3 prev_world_p = mul(geo.instance_data.object_to_world_prev, float4(object_p, 1)).xyz;
+    float3 object_p = mul(world_to_object, float4(geo_world_p, 1)).xyz;
+    float3 prev_world_p = mul(geo.instance_data.object_to_world_prev, float4(object_p, 1)).xyz;
 
-	if (!tweak.object_motion_vectors || tweak.freezeframe)
+    if (!tweak.object_motion_vectors || tweak.freezeframe)
     {
-		prev_world_p = geo_world_p;
+        prev_world_p = geo_world_p;
     }
 
-	float3 view_p      = mul(g_global_cb.view, float4(geo_world_p, 1)).xyz;
-	float3 prev_view_p = mul(g_global_cb.prev_view, float4(prev_world_p, 1)).xyz;
+    float3 view_p = mul(g_global_cb.view, float4(geo_world_p, 1)).xyz;
+    float3 prev_view_p = mul(g_global_cb.prev_view, float4(prev_world_p, 1)).xyz;
 
-	float2 screen_p      = Project(g_global_cb.proj, view_p);
-	float2 prev_screen_p = Project(g_global_cb.prev_proj, prev_view_p);
+    float2 screen_p = Project(g_global_cb.proj, view_p);
+    float2 prev_screen_p = Project(g_global_cb.prev_proj, prev_view_p);
 
-	float2 screen_motion = prev_screen_p - screen_p;
-	screen_motion.y = -screen_motion.y;
+    float2 screen_motion = prev_screen_p - screen_p;
+    screen_motion.y = -screen_motion.y;
 
-	geo.motion = screen_motion;
+    geo.motion = screen_motion;
 
     // -------------------------------------------------------------------------------------
     // Write to G-buffers
@@ -107,11 +107,11 @@ void PrimaryRaygen()
     img_material[dispatch_idx] = geo.material_index;
     img_visibility_prim[dispatch_idx] = geo.vis_prim;
     img_visibility_bary[dispatch_idx] = geo.vis_bary;
-    
-	if (tweak.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
-	{
-	    // Determine if the pixel should write to the reactive mask for FSR2
-	    img_fsr2_reactive_mask[pixel_pos] = float(g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask) * tweak.amd_fsr2_reactive_scale;
+
+    if (tweak.upscaling_aa_mode == UPSCALING_AA_MODE_AMD_FSR_2_2)
+    {
+        // Determine if the pixel should write to the reactive mask for FSR2
+        img_fsr2_reactive_mask[pixel_pos] = float(g_materials[geo.material_index].flags & RT_MaterialFlag_Fsr2ReactiveMask) * tweak.amd_fsr2_reactive_scale;
     }
 
 #if RT_PIXEL_DEBUG

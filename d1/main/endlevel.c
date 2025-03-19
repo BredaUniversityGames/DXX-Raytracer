@@ -904,7 +904,7 @@ void render_external_scene(fix eye_offset)
 				RT_Vec3 top = RT_Vec3Fromvms_vector(&top_pnt.p3_vec);
 				RT_Vec3 mid = RT_Vec3Muls(RT_Vec3Add(bot, top), 0.5f);
 				//RT_RaytraceRod(RT_MATERIAL_SATELLITE, bot, top, f2fl(SATELLITE_WIDTH));
-				RT_RaytraceBillboard(RT_MATERIAL_SATELLITE, (RT_Vec2){ f2fl(SATELLITE_WIDTH), f2fl(SATELLITE_HEIGHT) }, mid, mid);
+				RT_RaytraceBillboard(RT_MATERIAL_SATELLITE, (RT_Vec2){ f2fl(SATELLITE_WIDTH), f2fl(SATELLITE_HEIGHT) }, mid, mid, RT_RENDER_MASK_OBJECTS);
 #endif
 				g3_draw_rod_tmap(satellite_bitmap,&p,SATELLITE_WIDTH,&top_pnt,SATELLITE_WIDTH,lrgb);
 				Interpolation_method = save_im;
@@ -920,6 +920,10 @@ void render_external_scene(fix eye_offset)
 	ogl_toggle_depth_test(0);
 	Render_depth = (200-(vm_vec_dist_quick(&mine_ground_exit_point, &Viewer_eye)/F1_0))/36;
 #endif
+	// only render level if retracing rays are enabled, otherwise whole level will appear on terrain and not just what should be seen through tunnel exit
+	if (RT_GetRetraceRays())
+		RT_RenderLevel(RT_Vec3Fromvms_vector(&Viewer->pos));
+
 	render_terrain(&mine_ground_exit_point,exit_point_bmx,exit_point_bmy);
 #ifdef OGL
 	Render_depth = orig_Render_depth;
@@ -1072,17 +1076,33 @@ void render_endlevel_frame(fix eye_offset)
 		.near_plane = 0.1f,
 		.far_plane = 10000.0f
 	};
+	
+	bool not_outside = Endlevel_sequence < EL_OUTSIDE;
+	int32_t render_segment;
+
+	if (not_outside)
+	{
+		render_segment = Viewer->segnum;
+	}
+	else
+	{
+		render_segment = exit_segnum;
+	}
+
 	RT_SceneSettings frame_settings =
 	{
 		.camera = &camera,
 		.render_height_override = 0,
 		.render_width_override = 0,
+		.render_segment = render_segment,
+		.external = !not_outside,
+		
 	};
 	RT_BeginScene(&frame_settings);
 	RT_RaytraceSetSkyColors(RT_Vec3Make(0.5, 0.5, 0.5), RT_Vec3Make(0.5, 0.5, 0.5));
 #endif
 
-	if (Endlevel_sequence < EL_OUTSIDE)
+	if (not_outside)
 		endlevel_render_mine(eye_offset);
 	else
 		render_external_scene(eye_offset);

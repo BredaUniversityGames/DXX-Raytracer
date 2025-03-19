@@ -214,27 +214,29 @@ void RT_RaytraceMeshEx(RT_RenderMeshParams* render_mesh_params)
 }
 
 void RT_RaytraceMeshColor(RT_ResourceHandle mesh, RT_Vec4 color, const RT_Mat4* transform,
-    const RT_Mat4* prev_transform) {
+    const RT_Mat4* prev_transform, uint32_t render_mask) {
     RT_RenderMeshParams params = {};
     params.mesh_handle = mesh;
     params.transform = transform;
     params.prev_transform = prev_transform;
     params.color = RT_PackRGBA(color);
+	params.instance_mask = render_mask;
 
     RT_RaytraceMeshEx(&params);
 }
 
-void RT_RaytraceMesh(RT_ResourceHandle mesh, const RT_Mat4* transform, const RT_Mat4* prev_transform) {
+void RT_RaytraceMesh(RT_ResourceHandle mesh, const RT_Mat4* transform, const RT_Mat4* prev_transform, uint32_t render_mask) {
     RT_RenderMeshParams params = {};
     params.mesh_handle = mesh;
     params.transform = transform;
     params.prev_transform = prev_transform;
     params.color = 0xFFFFFFFF;
+	params.instance_mask = render_mask;
 
     RT_RaytraceMeshEx(&params);
 }
 
-void RT_RaytraceMeshOverrideMaterial(RT_ResourceHandle mesh, uint16_t material_override, const RT_Mat4* transform, const RT_Mat4* prev_transform)
+void RT_RaytraceMeshOverrideMaterial(RT_ResourceHandle mesh, uint16_t material_override, const RT_Mat4* transform, const RT_Mat4* prev_transform, uint32_t render_mask)
 {
 	RT_RenderMeshParams params = {};
 	params.mesh_handle       = mesh;
@@ -243,22 +245,23 @@ void RT_RaytraceMeshOverrideMaterial(RT_ResourceHandle mesh, uint16_t material_o
 	params.color             = 0xFFFFFFFF;
 	params.material_override = material_override;
 	params.flags             = g_override_flags;
+	params.instance_mask = render_mask;
     RenderBackend::RaytraceMesh(params);
 }
 
-void RT_RaytraceBillboard(uint16_t material_index, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos)
+void RT_RaytraceBillboard(uint16_t material_index, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos, uint32_t render_mask)
 {
-	RT_RaytraceBillboardColored(material_index, { 1, 1, 1 }, dim, pos, prev_pos);
+	RT_RaytraceBillboardColored(material_index, { 1, 1, 1 }, dim, pos, prev_pos,render_mask);
 }
 
-void RT_RaytraceBillboardColored(uint16_t material_index, RT_Vec3 color, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos)
+void RT_RaytraceBillboardColored(uint16_t material_index, RT_Vec3 color, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos, uint32_t render_mask)
 {
-	RenderBackend::RaytraceBillboardColored(material_index, color, dim, pos, prev_pos);
+	RenderBackend::RaytraceBillboardColored(material_index, color, dim, pos, prev_pos,render_mask);
 }
 
-void RT_RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 top_p, float width)
+void RT_RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 top_p, float width, uint32_t render_mask)
 {
-	RenderBackend::RaytraceRod(material_index, bot_p, top_p, width);
+	RenderBackend::RaytraceRod(material_index, bot_p, top_p, width,render_mask);
 }
 
 void RT_RaytraceRender()
@@ -352,4 +355,9 @@ void RT_RenderImGui(void)
 void RT_QueueScreenshot(const char *file_name)
 {
 	RenderBackend::QueueScreenshot(file_name);
+}
+
+bool RT_GetRetraceRays()
+{
+	return RenderBackend::GetRetraceRays();
 }

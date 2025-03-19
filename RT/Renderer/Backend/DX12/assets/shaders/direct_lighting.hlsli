@@ -4,6 +4,7 @@
 #include "primary_ray.hlsli"
 #include "occlusion.hlsl"
 #include "brdf.hlsl"
+#include "portal_retrace_ray.hlsl"
 
 struct Reservoir
 {
@@ -241,9 +242,11 @@ void CalculateDirectLightingAtSurface(in HitGeometry IN, inout DirectLightingOut
 
 				OcclusionRayPayload occlusion_payload;
 				occlusion_payload.visible = false;
-
+				occlusion_payload.hit_segment = -1;
+				occlusion_payload.start_segment = IN.hit_triangle.segment;
+	
 				TraceOcclusionRay(occlusion_ray, occlusion_payload, pixel_pos);
-
+				
 				float3 c = occlusion_payload.visible * ndotl * s.e * W;
 
 				float3 brdf_diffuse, brdf_specular;

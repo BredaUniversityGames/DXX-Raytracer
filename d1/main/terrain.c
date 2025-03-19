@@ -208,7 +208,8 @@ void render_terrain(vms_vector *org_point,int org_2dx,int org_2dy)
 	    .prev_transform = &id,
 	    .color = 0xFFFFFFFF,
 	    .material_override = 0,
-	    .flags = 0
+	    .flags = 0,
+		.instance_mask = RT_RENDER_MASK_TERRAIN,
 	};
 	RT_RaytraceMeshEx(&params);
 #else
@@ -486,6 +487,11 @@ void load_terrain(char *filename)
                 triangles[n_triangles].normal2 = normal1;
                 triangles[n_triangles].color = 0xFFFFFFFF;
                 triangles[n_triangles].material_edge_index = RT_MATERIAL_ENDLEVEL_TERRAIN;
+				triangles[n_triangles].portal = false;
+				triangles[n_triangles].segment = -1;
+				triangles[n_triangles].segment_adjacent = -1;
+				triangles[n_triangles].terrain = true;
+
                 n_triangles++;
 
                 // Create triangle 2
@@ -500,6 +506,10 @@ void load_terrain(char *filename)
                 triangles[n_triangles].normal2 = normal2;
 				triangles[n_triangles].color = 0xFFFFFFFF;
                 triangles[n_triangles].material_edge_index = RT_MATERIAL_ENDLEVEL_TERRAIN;
+				triangles[n_triangles].portal = false;
+				triangles[n_triangles].segment = -1;
+				triangles[n_triangles].segment_adjacent = -1;
+				triangles[n_triangles].terrain = true;
                 n_triangles++;
             }
         }

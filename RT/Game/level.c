@@ -24,6 +24,7 @@
 
 // Current active level
 RT_ResourceHandle g_level_resource = { 0 };
+RT_ResourceHandle g_level_with_portals_resource = { 0 };
 int g_active_level = 0;
 
 int m_light_count = 0;
@@ -36,7 +37,7 @@ short m_lights_relevance_score[1024] = { 0.0f };
 short m_lights_to_sort[1024];
 int m_lights_found = 0;
 
-RT_Triangle RT_TriangleFromIndices(RT_Vertex* verts, int vert_offset, int v0, int v1, int v2, int tmap) 
+RT_Triangle RT_TriangleFromIndices(RT_Vertex* verts, int vert_offset, int v0, int v1, int v2, int tmap, bool portal, int segment, int segment_adjacent)
 {
 	RT_Triangle triangle = { 0 };
 
@@ -61,6 +62,10 @@ RT_Triangle RT_TriangleFromIndices(RT_Vertex* verts, int vert_offset, int v0, in
 	triangle.uv1 = verts[vert_offset + v1].uv;
 	triangle.uv2 = verts[vert_offset + v2].uv;
 	triangle.color = 0xFFFFFFFF;
+
+	triangle.portal = portal;
+	triangle.segment = segment;
+	triangle.segment_adjacent = segment_adjacent;
 
 	return triangle;
 }
@@ -118,9 +123,8 @@ void RT_ExtractLightsFromSide(side* side, RT_Vertex* vertices, RT_Vec3 normal, i
 	}
 }
 
-RT_ResourceHandle RT_UploadLevelGeometry()
+bool RT_UploadLevelGeometry(RT_ResourceHandle* level_handle, RT_ResourceHandle* portals_handle)
 {
-	RT_ResourceHandle level_handle = {0};
 
 	// set all textures next/future state to not loaded
 	for (uint16_t bm_index = 1; bm_index < MAX_BITMAP_FILES; bm_index++)
@@ -134,6 +138,7 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 	{
 		RT_Vertex* verts = RT_ArenaAllocArray(&g_thread_arena, Num_segments * 6 * 4, RT_Vertex);
 		RT_Triangle* triangles = RT_ArenaAllocArray(&g_thread_arena, Num_segments * 6 * 2, RT_Triangle);
+		RT_Triangle* portal_triangles = RT_ArenaAllocArray(&g_thread_arena, Num_segments * 6 * 2, RT_Triangle);
 
 		// Init lights segment id list
 		for (size_t i = 0; i < _countof(m_lights_seg_ids); ++i) {
@@ -143,6 +148,7 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 		int num_verts = 0;
 		int num_indices = 0; 
 		int num_triangles = 0;
+		int num_portal_triangles = 0;
 
 		int num_mesh = 0;
 		for (int seg_id = 0; seg_id < Num_segments; seg_id++)
@@ -154,7 +160,7 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 				const int vertex_offset = num_verts;
 				const int indices_offset = num_indices;
 
-				side *s = &seg->sides[side_index];
+				side* s = &seg->sides[side_index];
 				int vertnum_list[4];
 				get_side_verts(&vertnum_list, seg_id, side_index);
 
@@ -184,39 +190,69 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 					//assert(vert.uv.x >= -10.0 && vert.uv.x <= 10.0);
 				}
 
-				// Ignore invisible walls
-				bool should_render = false;
+
+				// Mark invisible walls as portals
+				bool is_portal = true;
+				bool is_wall = false;
 				if (seg->children[side_index] == -1)
 				{
-					should_render = true;
+					is_portal = false;
 				}
 				else if (s->wall_num != -1)
 				{
-					wall *w = &Walls[s->wall_num];
+					wall* w = &Walls[s->wall_num];
 					// TODO(daniel): What about blastable wallls?
 					if (w->type != WALL_OPEN)
 					{
-						should_render = true;
+						is_wall = true;
 					}
 				}
-
-				if (!should_render) { continue; }
-
-				int absolute_side_index = MAX_SIDES_PER_SEGMENT*seg_id + side_index;
-				switch (s->type) 
+				else if (seg->children[side_index] == -2)
 				{
+					is_portal = true;
+				}
+
+				int absolute_side_index = MAX_SIDES_PER_SEGMENT * seg_id + side_index;
+
+				// Create two different meshes, one for visible level geo and one for portals (including walls) for retracing rays
+
+				// if not a portal surface or is a wall add to regular level geometry
+				if (!is_portal || is_wall)
+				{
+					switch (s->type)
+					{
 					case SIDE_IS_TRI_13:
-						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 3, absolute_side_index);
-						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 1, 2, 3, absolute_side_index);
-					break;
-					
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 3, absolute_side_index, false, seg_id, seg->children[side_index]);
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 1, 2, 3, absolute_side_index, false, seg_id, seg->children[side_index]);
+						break;
+
 					case SIDE_IS_QUAD:
 					case SIDE_IS_TRI_02:
 					default:
-						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index);
-						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index);
-					break;
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index, false, seg_id, seg->children[side_index]);
+						triangles[num_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index, false, seg_id, seg->children[side_index]);
+						break;
+					}
 				}
+				
+				if (is_portal || is_wall) // portals and walls to portals mesh
+				{
+					switch (s->type)
+					{
+					case SIDE_IS_TRI_13:
+						portal_triangles[num_portal_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 3, absolute_side_index, is_portal, seg_id, seg->children[side_index]);
+						portal_triangles[num_portal_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 1, 2, 3, absolute_side_index, is_portal, seg_id, seg->children[side_index]);
+						break;
+
+					case SIDE_IS_QUAD:
+					case SIDE_IS_TRI_02:
+					default:
+						portal_triangles[num_portal_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 1, 2, absolute_side_index, is_portal, seg_id, seg->children[side_index]);
+						portal_triangles[num_portal_triangles++] = RT_TriangleFromIndices(verts, vertex_offset, 0, 2, 3, absolute_side_index, is_portal, seg_id, seg->children[side_index]);
+						break;
+					}
+				}
+				
 				
 				RT_ExtractLightsFromSide(s, &verts[vertex_offset], triangles[num_triangles - 1].normal0, seg_id);
 
@@ -286,6 +322,7 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 		// NOTE(daniel): This is a separate call, because I don't want to do something tweaky like
 		// detecting whether tangents need to be calculated in RT_UploadMesh. You, the uploader, should know.
 		RT_GenerateTangents(triangles, num_triangles);
+		RT_GenerateTangents(portal_triangles, num_portal_triangles);
 
 		RT_UploadMeshParams params =
 		{
@@ -294,14 +331,24 @@ RT_ResourceHandle RT_UploadLevelGeometry()
 		};
 
 		RT_LOGF(RT_LOGSERVERITY_INFO, "UPLOADING MESH >>\n");
-		level_handle = RT_UploadMesh(&params);
+		*level_handle = RT_UploadMesh(&params);
+		RT_LOGF(RT_LOGSERVERITY_INFO, "UPLOADING MESH OK\n");
+
+		RT_UploadMeshParams params_portals =
+		{
+			.triangle_count = num_portal_triangles,
+			.triangles = portal_triangles,
+		};
+
+		RT_LOGF(RT_LOGSERVERITY_INFO, "UPLOADING MESH >>\n");
+		*portals_handle = RT_UploadMesh(&params_portals);
 		RT_LOGF(RT_LOGSERVERITY_INFO, "UPLOADING MESH OK\n");
 
 		// load and unload materials based on if they are needed for this level.
 		RT_SyncMaterialStates();
 	}
 
-	return level_handle;
+	return true;
 }
 
 bool RT_UnloadLevel()
@@ -318,6 +365,15 @@ bool RT_UnloadLevel()
 		return true;
 	}
 
+	// now unload the version with portals
+	if (RT_RESOURCE_HANDLE_VALID(g_level_with_portals_resource))
+	{
+		RT_ReleaseMesh(g_level_with_portals_resource);
+		g_level_with_portals_resource = RT_RESOURCE_HANDLE_NULL;
+
+		return true;
+	}
+
 	return false;
 }
 
@@ -328,11 +384,11 @@ bool RT_LoadLevel()
 	{
 		assert(!RT_RESOURCE_HANDLE_VALID(g_level_resource));
 		// Load level geometry
-		g_level_resource = RT_UploadLevelGeometry();
+		RT_UploadLevelGeometry(&g_level_resource, &g_level_with_portals_resource);
 		RT_ResetLightEmission();		// added this here as resetting light emission was getting skipped when doing a level warp
 		g_active_level = Current_level_num;
 
-		return RT_RESOURCE_HANDLE_VALID(g_level_resource);
+		return RT_RESOURCE_HANDLE_VALID(g_level_resource) && RT_RESOURCE_HANDLE_VALID(g_level_with_portals_resource);
 	}
 
 	return false;
@@ -347,7 +403,11 @@ void RT_RenderLevel(RT_Vec3 player_pos)
 	RT_FindAndSubmitNearbyLights(player_pos);
 
 	RT_Mat4 mat = RT_Mat4Identity();
-	RT_RaytraceMesh(g_level_resource, &mat, &mat);
+	
+	// render each mesh on the proper render mask
+	RT_RaytraceMesh(g_level_resource, &mat, &mat, RT_RENDER_MASK_LEVELGEOMETRY);
+	if(RT_GetRetraceRays())
+		RT_RaytraceMesh(g_level_with_portals_resource, &mat, &mat, RT_RENDER_MASK_PORTALS);
 }
 
 void TraverseSegmentsForLights(short seg_num, uint8_t* visit_list, uint8_t* lights_added, int curr_rec_depth, RT_Vec3 curr_seg_entry_pos, float curr_segment_distance) {

@@ -1623,6 +1623,8 @@ void render_frame(fix eye_offset)
 
 	scene_settings.render_width_override = Screen_3d_window.cv_bitmap.bm_w;
 	scene_settings.render_height_override = Screen_3d_window.cv_bitmap.bm_h;
+	scene_settings.render_segment = start_seg_num;
+	scene_settings.external = false;
 	RT_BeginScene(&scene_settings);
 
 	// Player light

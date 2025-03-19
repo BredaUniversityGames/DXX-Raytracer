@@ -2553,6 +2553,9 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 		triangles[0].uv2      = uvs[2];
 		triangles[0].color    = 0xFFFFFFFF;
 		triangles[0].material_edge_index = RT_TRIANGLE_MATERIAL_INSTANCE_OVERRIDE;
+		triangles[0].portal = false;
+		triangles[0].segment = -1;
+		triangles[0].segment_adjacent = -1;
 
 		triangles[1].pos0     = vertices[0];
 		triangles[1].pos1     = vertices[2];
@@ -2568,6 +2571,9 @@ void RenderBackend::Init(const RT_RendererInitParams* render_init_params)
 		triangles[1].uv2      = uvs[3];
 		triangles[1].color    = 0xFFFFFFFF;
 		triangles[1].material_edge_index = RT_TRIANGLE_MATERIAL_INSTANCE_OVERRIDE;
+		triangles[1].portal = false;
+		triangles[1].segment = -1;
+		triangles[1].segment_adjacent = -1;
 
 		RT_UploadMeshParams params = {};
 		params.name           = "Billboard Quad";
@@ -3080,6 +3086,9 @@ void RenderBackend::BeginScene(const RT_SceneSettings* scene_settings)
 	g_d3d.scene.freezeframe |= tweak_vars.freezeframe;
 	g_d3d.scene.prev_camera = g_d3d.scene.camera;
 
+	g_d3d.scene.render_segment = scene_settings->render_segment;
+	g_d3d.scene.external = scene_settings->external;
+
 	g_d3d.prev_lights_count = g_d3d.lights_count;
 
 	if (!g_d3d.scene.freezeframe)
@@ -3161,6 +3170,9 @@ void RenderBackend::EndScene()
 			scene_cb->viewport_offset_y = g_d3d.viewport_offset_y;
 			scene_cb->screen_color_overlay = g_d3d.io.screen_overlay_color;
 
+			scene_cb->ray_segment = g_d3d.scene.render_segment;
+			scene_cb->external = g_d3d.scene.external;
+			
 			D3D12_CPU_DESCRIPTOR_HANDLE cbv = frame->descriptors.GetCPUDescriptor(D3D12GlobalDescriptors_CBV_GlobalConstantBuffer);
 
 			D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc = {};
@@ -3689,7 +3701,7 @@ void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& params)
 		uint32_t instance_index = g_d3d.tlas_instance_count++;
 
 		D3D12_RAYTRACING_INSTANCE_DESC *instance_desc = frame->instance_descs.As<D3D12_RAYTRACING_INSTANCE_DESC>() + instance_index;
-		instance_desc->InstanceMask = 1;
+		instance_desc->InstanceMask = params.instance_mask;
 		memcpy(instance_desc->Transform, params.transform, sizeof(float)*12);
 		instance_desc->AccelerationStructure = mesh_resource->blas->GetGPUVirtualAddress();
 		instance_desc->InstanceContributionToHitGroupIndex = 0;
@@ -3731,7 +3743,7 @@ void RenderBackend::RaytraceMesh(const RT_RenderMeshParams& params)
 	}
 }
 
-void RenderBackend::RaytraceBillboardColored(uint16_t material_index, RT_Vec3 color, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos)
+void RenderBackend::RaytraceBillboardColored(uint16_t material_index, RT_Vec3 color, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos, uint32_t render_mask)
 {
 	RT_RenderMeshParams params = {};
 	RT_Mat4 transform;
@@ -3759,10 +3771,11 @@ void RenderBackend::RaytraceBillboardColored(uint16_t material_index, RT_Vec3 co
 	params.prev_transform = &prev_transform;
 	params.color = RT_PackRGBA(color4);
 	params.material_override = material_index;
+	params.instance_mask = render_mask;
 	RaytraceMesh(params);
 }
 
-void RenderBackend::RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 top_p, float width)
+void RenderBackend::RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 top_p, float width, uint32_t render_mask)
 {
 	RT_Mat4 transform;
 	{
@@ -3786,6 +3799,7 @@ void RenderBackend::RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 
 	params.prev_transform = &transform;
 	params.material_override = material_index;	
 	params.color = 0xFFFFFFFF;
+	params.instance_mask = render_mask;
 
 	RaytraceMesh(params);
 }
@@ -4590,6 +4604,11 @@ void RenderBackend::RaytraceSetSkyColors(const RT_Vec3 top, const RT_Vec3 bottom
 {
 	CurrentFrameData()->scene_cb.As<GlobalConstantBuffer>()->sky_color_top = top;
 	CurrentFrameData()->scene_cb.As<GlobalConstantBuffer>()->sky_color_bottom = bottom;
+}
+
+bool RenderBackend::GetRetraceRays()
+{
+	return tweak_vars.retrace_rays;
 }
 
 void RenderBackend::RasterSetViewport(float x, float y, float width, float height)

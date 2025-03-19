@@ -347,7 +347,7 @@ static void RT_RenderGLTF(RT_GLTFNode *node, RT_Mat4 transform, RT_Mat4 prev_tra
     if (node->model)
     {
         RT_GLTFModel *model = node->model;
-        RT_RaytraceMeshColor(model->handle, color, &transform, &prev_transform);
+        RT_RaytraceMeshColor(model->handle, color, &transform, &prev_transform, RT_RENDER_MASK_OBJECTS);
     }
 
     for (size_t i = 0; i < node->children_count; i++)

@@ -85,6 +85,8 @@ static const float PI = 3.14159265359;
 #define RT_RAY_T_MIN 0.001
 #define RT_RAY_T_MAX 10000
 
+#define RT_NUM_PORTAL_HITS 16
+
 // @Volatile: Must match RT_Triangle in Renderer.h
 struct RT_Triangle
 {
@@ -106,6 +108,14 @@ struct RT_Triangle
 
 	uint color;
 	uint material_edge_index;
+
+	// level geometry
+	bool portal;				// is this triangle a portal to another segment
+	int segment;			// what segment does this triangle belong too (if world geo)
+	int segment_adjacent;	// if this is a portal what segment does it lead to
+
+	// terrain
+	bool terrain;				// is this triangle a terrain triangle
 };
 
 // @Volatile: Must match RT_MaterialFlags in Renderer.h
@@ -130,6 +140,14 @@ struct RT_Light
 	uint     spot_vignette : 8;
 	uint     emission;
 	float3x4 transform;
+};
+
+// Common Structs
+struct PortalHit
+{
+	int segment;
+	int segment_adjacent;
+	float hit_distance;
 };
 
 // ------------------------------------------------------------------
@@ -661,7 +679,7 @@ float2 GetRotatedUVs(uint orient, float2 uv)
 	}
 }
 
-void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, float2 barycentrics, inout uint material_index, inout float2 uv, inout float3 normal, inout float3 tangent)
+void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, uint instance_index, int2 pixel_pos, float2 barycentrics, inout uint material_index, inout float2 uv, inout float3 normal, inout float3 tangent)
 {
 	// Figure out the materials and apply potential debug material override
 	uint material_edge_index = hit_triangle.material_edge_index;
@@ -710,8 +728,9 @@ void GetHitMaterialAndUVs(InstanceData instance_data, RT_Triangle hit_triangle, 
 		Material material2 = g_materials[material_index2];
 		Texture2D tex_albedo_material2 = GetTextureFromIndex(material2.albedo_index);
 		float4 albedo2 = tex_albedo_material2.SampleLevel(g_sampler_point_wrap, uv_rotated, 0);
+		float  dither = RandomSample(pixel_pos, instance_index) * 0.99;
 
-		if (albedo2.a > 0.0)
+		if (albedo2.a > dither)
 		{
 			material_index = material_index2;
 			if (orient != 0)
@@ -802,7 +821,7 @@ bool IsHitTransparent(uint instance_idx, uint primitive_idx, float2 barycentrics
 			return true;
 		}
 
-		if ( dither >= albedo2.a )
+		if ( dither < albedo2.a )
 		{
 			material = g_materials[material_index2];
 			return dither >= base_alpha;
@@ -1029,5 +1048,6 @@ float4 SampleTextureAnisotropic(Texture2D tex, SamplerState samp, float2 tex_gra
 
 	return tex.SampleGrad(samp, uv, tex_gradient1, tex_gradient2);
 }
+
 
 #endif /* COMMON_HLSL */

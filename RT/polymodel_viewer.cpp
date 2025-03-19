@@ -138,7 +138,7 @@ void RT_RenderPolyModelViewer()
 			RT_Mat4 Rz = RT_Mat4FromZRotation(RT_RadiansFromDegrees(viewer.model_rotation_z));
 			RT_Mat4 R = basis*Ry*Rx*Rz;
 			RT_Mat4 transform = T*R;
-			RT_RaytraceMesh(handle, &transform, &viewer.prev_transform);
+			RT_RaytraceMesh(handle, &transform, &viewer.prev_transform, RT_RENDER_MASK_OBJECTS);
 			viewer.prev_transform = transform;
 
 			viewer.spin_offset += 45.0f*viewer.spin_speed / 60.0f; // Assumes hardcoded 60 fps. Silly but it's a debug tool, don't care to figure out where frametime is kept.

@@ -2,6 +2,7 @@
 #define PRIMARY_RAY_HLSLI
 
 #include "include/common.hlsl"
+#include "portal_retrace_ray.hlsl"
 
 struct PrimaryRayPayload
 {
@@ -9,13 +10,15 @@ struct PrimaryRayPayload
     uint primitive_idx;
     float2 barycentrics;
     float hit_distance;
+    int start_segment;                          // what level segment did the ray start in?
+    int hit_segment;                           // what level segment (if any) does the hit belong to.  Could look this up with instance and primitive idx's, but simpler to just record it here.
 };
 
-void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload, uint2 pixel_pos)
+void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload, uint2 pixel_pos, uint render_mask)
 {
 #if RT_DISPATCH_RAYS
 
-    TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 0, 0, ray, payload);
+    TraceRay(g_scene, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, render_mask, 0, 0, 0, ray, payload);
 
 #elif RT_INLINE_RAYTRACING
     
@@ -23,7 +26,7 @@ void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload, uint2 pixel_p
 	ray_query.TraceRayInline(
 		g_scene,
 		RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-		~0,
+        render_mask,
 		ray
 	);
 	
@@ -36,19 +39,84 @@ void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload, uint2 pixel_p
 		{
 			case CANDIDATE_NON_OPAQUE_TRIANGLE:
 			{
+                uint instance_idx = ray_query.CandidateInstanceIndex();
+                uint primitive_idx = ray_query.CandidatePrimitiveIndex();
+
+                InstanceData instance_data = g_instance_data_buffer[instance_idx];
+                RT_Triangle hit_triangle = GetHitTriangle(instance_data.triangle_buffer_idx, primitive_idx);
+                float hit_distance = ray_query.CandidateTriangleRayT();
+
 				Material hit_material;
 
+                bool valid_hit = true;
+
+                if (tweak.retrace_rays && payload.start_segment != -1)  // retrace rays to handle intersecting level segments
+                {
+                   // bool found = false;
+
+                    // first check if the hit triangle is part of the segment we are looking for
+                    if (hit_triangle.segment != -1 && hit_triangle.segment != payload.start_segment)
+                    {
+                       // if not, setup a retrace ray that starts at the hit location and shoots back to the viewer
+                        float3 newOrigin = ray.Origin + (ray.Direction * hit_distance);
+                        RayDesc retrace_ray;
+                        retrace_ray.Origin = newOrigin;
+                        retrace_ray.Direction = ray.Direction * -1.0;
+                        retrace_ray.TMin = 0.0;
+                        retrace_ray.TMax = hit_distance + 1.0;	// add just a little bit to distance... it helps when the camera is close to a portal surface.
+
+                        // setup retrace to check if it passes through portal that leads to segment hit happened in.
+                        PortalRetraceRayPayload retrace_payload;
+                        retrace_payload.search_segment = hit_triangle.segment;
+                        retrace_payload.found = false;
+                        retrace_payload.hit_distance = RT_RAY_T_MAX;
+                        retrace_payload.next_segment = -1;
+
+                        TracePortalRetraceRay(retrace_ray, retrace_payload, pixel_pos, false);
+
+                        // retrace did pass through portal that leads to where the hit happened
+                        if (retrace_payload.found)
+                        {
+                            // does that portal lead to where the player ship is?
+                            if (retrace_payload.next_segment != payload.start_segment)
+                            {
+                                // if it does not, do one more retrace
+                                retrace_payload.search_segment = retrace_payload.next_segment;
+                                retrace_payload.found = false;
+                                retrace_payload.hit_distance = RT_RAY_T_MAX;
+                                retrace_payload.next_segment = -1;
+
+                                TracePortalRetraceRay(retrace_ray, retrace_payload, pixel_pos, false);
+                                if (!retrace_payload.found)
+                                {
+                                    // failed second retrace, not valid hit
+                                    valid_hit = false;
+                                }
+                            }
+                           
+                        }
+                        else
+                        {
+                            valid_hit = false;
+                        }
+                    }
+
+                }
+
 				// Check for transparency on hit candidate
-				if (!IsHitTransparent(
-					ray_query.CandidateInstanceIndex(),
-					ray_query.CandidatePrimitiveIndex(),
-					ray_query.CandidateTriangleBarycentrics(),
-					pixel_pos,
-					hit_material
-				))
-				{
-					ray_query.CommitNonOpaqueTriangleHit();
-				}
+               
+                if (valid_hit && !IsHitTransparent(
+                    instance_idx,
+                    primitive_idx,
+                    ray_query.CandidateTriangleBarycentrics(),
+                    pixel_pos,
+                    hit_material
+                ))
+                {
+                    ray_query.CommitNonOpaqueTriangleHit();
+                }
+                    
+               
 				break;
 			}
 		}
@@ -58,26 +126,35 @@ void TracePrimaryRay(RayDesc ray, inout PrimaryRayPayload payload, uint2 pixel_p
 	// Determine instance/primitive indices, barycentrics and the hit distance
 	// Default values are set for a ray miss
 
-	payload.instance_idx = ~0;
-	payload.primitive_idx = ~0;
-	payload.barycentrics = float2(0.0, 0.0);
-	payload.hit_distance = RT_RAY_T_MAX;
-
 	switch (ray_query.CommittedStatus())
 	{
 		case COMMITTED_TRIANGLE_HIT:
 		{
-			// Triangle hit
-			payload.instance_idx = ray_query.CommittedInstanceIndex();
-			payload.primitive_idx = ray_query.CommittedPrimitiveIndex();
-			payload.barycentrics = ray_query.CommittedTriangleBarycentrics();
-			payload.hit_distance = ray_query.CommittedRayT();
-			break;
+            float hit_distance = ray_query.CommittedRayT();
+
+            uint instance_idx = ray_query.CommittedInstanceIndex();
+            uint primitive_idx = ray_query.CommittedPrimitiveIndex();
+
+            InstanceData instance_data = g_instance_data_buffer[instance_idx];
+            RT_Triangle hit_triangle = GetHitTriangle(instance_data.triangle_buffer_idx, primitive_idx);
+           
+            payload.instance_idx = instance_idx;
+            payload.primitive_idx = primitive_idx;
+            payload.barycentrics = ray_query.CommittedTriangleBarycentrics();
+            payload.hit_distance = hit_distance;
+            payload.hit_segment = hit_triangle.segment;
+
+            break;
 		}
 		// We do not need this case because we initialize the values by default to be as if the ray missed
 		case COMMITTED_NOTHING:
 		{
-			// Missed
+            payload.instance_idx = ~0;
+            payload.primitive_idx = ~0;
+            payload.barycentrics = float2(0.0, 0.0);
+            payload.hit_distance = RT_RAY_T_MAX;
+            payload.hit_segment = -1;
+
 			break;
 		}
 	}
@@ -105,7 +182,7 @@ struct HitGeometry
 
 void GetHitGeometryFromRay(RayDesc ray,
     uint instance_index, uint primitive_index, float2 barycentrics, float hit_distance,
-    uint recursion_depth, int2 pixel_pos, int2 render_dim, inout HitGeometry OUT)
+    uint recursion_depth, int2 pixel_pos, int2 render_dim, inout HitGeometry OUT,bool do_parallax)
 {
     // -------------------------------------------------------------------------------------
     // Determine gbuffer hit world direction value
@@ -130,13 +207,13 @@ void GetHitGeometryFromRay(RayDesc ray,
         float2 uv = (float2)0;
 		float3 interpolated_normal = (float3)0;
 		float3 tangent = (float3)0;
-        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
+        GetHitMaterialAndUVs(OUT.instance_data, OUT.hit_triangle, instance_index, pixel_pos, barycentrics, OUT.material_index, uv, interpolated_normal, tangent);
         Material hit_material = g_materials[OUT.material_index];
 
         // ==========================================================================
         // parallax mapping
         // ==========================================================================
-        if (tweak.enable_parallax_mapping)
+        if (do_parallax)
         {
             Texture2D tex_height = GetTextureFromIndex(hit_material.height_index);
 

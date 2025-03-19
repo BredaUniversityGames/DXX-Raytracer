@@ -1429,6 +1429,7 @@ void RT_RenderMaterialViewer()
 		params.key.value         = 0x800815;
 		params.material_override = viewer.selected_materials[current_index];
 		params.transform         = &transform;
+		params.instance_mask = RT_RENDER_MASK_OBJECTS;
 		RT_RaytraceMeshEx(&params);
 
 		viewer.spin_offset += 45.0f*viewer.spin_speed / 60.0f; // Assumes hardcoded 60 fps. Silly but it's a debug tool, don't care to figure out where frametime is kept.

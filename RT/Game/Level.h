@@ -10,6 +10,6 @@ bool RT_LoadLevel();
 void RT_RenderLevel(RT_Vec3 player_pos);
 bool RT_UnloadLevel();
 
-RT_ResourceHandle RT_UploadLevelGeometry(void);
+bool RT_UploadLevelGeometry(RT_ResourceHandle* level_handle, RT_ResourceHandle* portals_handle);
 
 #endif //_RT_LEVEL_H

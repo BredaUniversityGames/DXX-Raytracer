@@ -215,7 +215,7 @@ bool g3_draw_bitmap_full(vms_vector* pos, fix width, fix height, grs_bitmap* bm,
 	RT_Vec2 rt_dim = { f2fl(width), f2fl(height) };
 	RT_Vec3 rt_pos = RT_Vec3Fromvms_vector(pos);
 
-	RT_RaytraceBillboardColored(material_index, RT_Vec3Make(r, g, b), rt_dim, rt_pos, rt_pos);
+	RT_RaytraceBillboardColored(material_index, RT_Vec3Make(r, g, b), rt_dim, rt_pos, rt_pos, RT_RENDER_MASK_OBJECTS);
 
 	return 0;
 }
@@ -236,7 +236,7 @@ void draw_object_tmap_rod(object *obj, bitmap_index bmi, int lighted)
 	RT_Vec3 bot_p = RT_Vec3Fromvms_vector(&bot_v);
 	RT_Vec3 top_p = RT_Vec3Fromvms_vector(&top_v);
 
-	RT_RaytraceRod(bmi.index, bot_p, top_p, f2fl(obj->size));
+	RT_RaytraceRod(bmi.index, bot_p, top_p, f2fl(obj->size), RT_RENDER_MASK_OBJECTS);
 }
 
 bool g3_draw_bitmap_colorwarp(vms_vector* pos, fix width, fix height, grs_bitmap* bm,
@@ -524,6 +524,10 @@ void RT_VertexFixToFloat_Fan(RT_TriangleBuffer *buf, int nv, g3s_point** pointli
 
     first_triangle.material_edge_index = texture_id;
 
+	first_triangle.portal = false;
+	first_triangle.segment = -1;
+	first_triangle.segment_adjacent = -1;
+
 	int start_count = buf->count;
 
 	for (int point_index = 1; point_index + 1 < nv; point_index++)
@@ -545,6 +549,10 @@ void RT_VertexFixToFloat_Fan(RT_TriangleBuffer *buf, int nv, g3s_point** pointli
 		triangle.uv2.y = f2fl(pointlist[point_index + 1]->p3_v);
 
         triangle.material_edge_index = texture_id;
+
+		triangle.portal = false;
+		triangle.segment = -1;
+		triangle.segment_adjacent = -1;
 		
 		//Now do the normals
 		RT_Vec3 p10 = RT_Vec3Normalize(RT_Vec3Sub(triangle.pos1, triangle.pos0));
@@ -985,6 +993,7 @@ void RT_DrawPolyModel(const int meshnumber, const int signature, ubyte object_ty
 			.mesh_handle = handle,
 			.transform   = &mat,
 			.color       = 0xFFFFFFFF,
+			.instance_mask = RT_RENDER_MASK_OBJECTS,
 		};
 		RT_RaytraceMeshEx(&params);
 	}
@@ -1010,6 +1019,7 @@ void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submod
 			.mesh_handle = submodel,
 			.transform = submodel_transform,
 			.color = RT_PackRGBA(color),
+			.instance_mask = RT_RENDER_MASK_OBJECTS,
 		};
 		RT_RaytraceMeshEx(&params);
 	}
@@ -1095,7 +1105,7 @@ void RT_DrawGLTF(const RT_GLTFNode* node, RT_Mat4 transform, RT_Mat4 prev_transf
 	if (node->model)
 	{
 		RT_GLTFModel* model = node->model;
-		RT_RaytraceMesh(model->handle, &transform, &prev_transform);
+		RT_RaytraceMesh(model->handle, &transform, &prev_transform, RT_RENDER_MASK_OBJECTS);
 	}
 
 	for (size_t i = 0; i < node->children_count; i++)

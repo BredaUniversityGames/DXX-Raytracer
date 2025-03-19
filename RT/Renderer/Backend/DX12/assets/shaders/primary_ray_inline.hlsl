@@ -3,6 +3,7 @@
 
 #include "include/common.hlsl"
 #include "primary_ray.hlsli"
+#include "portal_retrace_ray.hlsl"
 
 [numthreads(GROUP_X, GROUP_Y, 1)]
 void PrimaryRayInline(COMPUTE_ARGS)
@@ -10,10 +11,44 @@ void PrimaryRayInline(COMPUTE_ARGS)
 	// ---------------------------------------------------------------------------------------------------------------
 	// Set up the primary ray and its payload, then trace the ray
 
+	// Trace the primary ray
 	RayDesc ray = GetRayDesc(pixel_pos, g_global_cb.render_dim);
-	PrimaryRayPayload payload = (PrimaryRayPayload)0;
-	TracePrimaryRay(ray, payload, pixel_pos);
-	
+	PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
+	ray_payload.primitive_idx = ~0;
+	ray_payload.instance_idx = ~0;
+	ray_payload.hit_segment = -1;
+	ray_payload.start_segment = g_global_cb.ray_segment;
+
+	if(!g_global_cb.external)
+	{
+		// rendering inside the level
+		TracePrimaryRay(ray, ray_payload, pixel_pos, ~2); 
+	}
+	else
+	{
+		// do external rendering here. (end of exit sequence)
+
+		// first do a pretrace ray to see if the ray goes through the exit segment.  if it does... render the mine, if not render the terrain
+		RayDesc pretrace_ray = GetRayDesc(pixel_pos, g_global_cb.render_dim);  // make a pretrace ray with the same settings as the primary ray
+
+		PortalRetraceRayPayload pretrace_payload;
+		pretrace_payload.search_segment = g_global_cb.ray_segment;	// .ray_segment is set to the exit portal when rendering is external
+		pretrace_payload.found = false;
+		pretrace_payload.hit_distance = RT_RAY_T_MAX;
+		pretrace_payload.next_segment = -1;
+
+		TracePortalRetraceRay(pretrace_ray, pretrace_payload, pixel_pos, true);
+
+		if (pretrace_payload.found)	// ray hit the exit segment... render the mine
+		{
+			TracePrimaryRay(ray, ray_payload, pixel_pos, ~6);	// trace rays ignoring portals (2) and terrain (4)
+		}
+		else  // ray did not hit exit segment... render terrain
+		{
+			TracePrimaryRay(ray, ray_payload, pixel_pos, ~3);	// trace rays ignoring portals (2) and level geo (1)
+		}
+	}
+
 	// ---------------------------------------------------------------------------------------------------------------
 	// Get the geometry data from the primary ray hit
 
@@ -21,14 +56,14 @@ void PrimaryRayInline(COMPUTE_ARGS)
 	geo.depth = RT_RAY_T_MAX;
 
 	GetHitGeometryFromRay(ray,
-		payload.instance_idx, payload.primitive_idx, payload.barycentrics, payload.hit_distance,
-		0, pixel_pos, g_global_cb.render_dim, geo
+		ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
+		0, pixel_pos, g_global_cb.render_dim, geo, tweak.enable_parallax_mapping
 	);
 
 	// ---------------------------------------------------------------------------------------------------------------
 	// Evaluate G-buffer motion vectors
 
-    float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, ray.Direction, payload.hit_distance);
+    float3 geo_world_p = ReconstructWorldPosition(g_global_cb.view_inv, ray.Direction, ray_payload.hit_distance);
 	float3x4 world_to_object = float3x4(geo.instance_data.world_to_object[0],
 										geo.instance_data.world_to_object[1],
 										geo.instance_data.world_to_object[2]);

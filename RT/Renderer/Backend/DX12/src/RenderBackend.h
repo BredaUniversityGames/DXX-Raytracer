@@ -43,10 +43,11 @@ namespace RenderBackend
 	float RaytraceGetVerticalOffset();
 	uint32_t RaytraceGetCurrentLightCount();
 	void RaytraceMesh(const RT_RenderMeshParams& render_mesh_params);
-	void RaytraceBillboardColored(uint16_t material_index, RT_Vec3 color, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos);
-	void RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 top_p, float width);
+	void RaytraceBillboardColored(uint16_t material_index, RT_Vec3 color, RT_Vec2 dim, RT_Vec3 pos, RT_Vec3 prev_pos, uint32_t render_mask);
+	void RaytraceRod(uint16_t material_index, RT_Vec3 bot_p, RT_Vec3 top_p, float width, uint32_t render_mask);
 	void RaytraceRender();
     void RaytraceSetSkyColors(RT_Vec3 top, RT_Vec3 bottom);
+	bool GetRetraceRays();
 
 	// -----------------------------------------------------------------------------------------------
 	// Rasterization (UI, debug rendering)

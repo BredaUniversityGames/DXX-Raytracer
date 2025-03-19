@@ -164,6 +164,9 @@ void IndirectLightingInline(COMPUTE_ARGS)
 
 			// Set up geometry input for primary ray trace
 			PrimaryRayPayload ray_payload = (PrimaryRayPayload)0;
+			ray_payload.start_segment = hit_triangle.segment;
+			ray_payload.hit_segment = -1;
+
 			RayDesc ray   = (RayDesc)0;
 			ray.Origin    = gbuf_world_p + 0.01f * gbuf_normal;
 			ray.Direction = bounce_direction;
@@ -171,7 +174,8 @@ void IndirectLightingInline(COMPUTE_ARGS)
 			ray.TMax      = RT_RAY_T_MAX;
 
 			// Trace the primary ray
-			TracePrimaryRay(ray, ray_payload, pixel_pos);
+			TracePrimaryRay(ray, ray_payload, pixel_pos, ~2);  // trace ray ignoring portals
+			
 
 			// Set up geometry output from primary ray trace and set non-zero defaults where necessary
 			HitGeometry geo = (HitGeometry)0;
@@ -179,7 +183,7 @@ void IndirectLightingInline(COMPUTE_ARGS)
 			// Get geometry data from primary ray trace
 			GetHitGeometryFromRay(ray,
 				ray_payload.instance_idx, ray_payload.primitive_idx, ray_payload.barycentrics, ray_payload.hit_distance,
-				0, pixel_pos, g_global_cb.render_dim, geo
+				0, pixel_pos, g_global_cb.render_dim, geo, false
 			);
 			geo.world_p = gbuf_world_p + ray_payload.hit_distance*bounce_direction;
 
