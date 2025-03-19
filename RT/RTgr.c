@@ -1009,6 +1009,7 @@ void RT_DrawSubPolyModel(RT_ResourceHandle submodel, const RT_Mat4* const submod
 			.key = key,
 			.mesh_handle = submodel,
 			.transform = submodel_transform,
+			.prev_transform = submodel_transform,
 			.color = RT_PackRGBA(color),
 		};
 		RT_RaytraceMeshEx(&params);

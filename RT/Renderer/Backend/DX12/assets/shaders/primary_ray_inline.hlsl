@@ -50,7 +50,8 @@ void PrimaryRayInline(COMPUTE_ARGS)
 	float2 screen_motion = prev_screen_p - screen_p;
 	screen_motion.y = -screen_motion.y;
 
-	geo.motion = screen_motion;
+	if (ray_payload.instance_idx != ~0)		// if ray hit nothing ignore screen motion
+		geo.motion = screen_motion;
 
 	// -------------------------------------------------------------------------------------
     // Write to G-buffers
